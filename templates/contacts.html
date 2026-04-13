@@ -7,6 +7,14 @@
     <input name="phone" placeholder="Phone (e.g. 918447731703)" required>
     <button type="submit" class="btn">Add Contact</button>
 </form>
+
+<details style="margin-bottom:1rem">
+    <summary style="cursor:pointer;color:#128C7E;font-weight:600">Bulk Import (paste names &amp; numbers)</summary>
+    <form method="POST" action="{{ url_for('bulk_import_contacts') }}" style="margin-top:0.5rem">
+        <textarea name="bulk" rows="8" placeholder="Paste tab-separated data: Name [tab] ... [tab] Phone&#10;e.g.&#10;Hitesh Sharma&#9;Director&#9;8447731702&#10;Neeraj Jha&#9;Finance&#9;8527192520" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:0.85rem"></textarea>
+        <button type="submit" class="btn" style="margin-top:0.5rem">Import All</button>
+    </form>
+</details>
 <div class="table-wrap">
 <table>
     <thead>

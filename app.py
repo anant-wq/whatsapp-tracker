@@ -352,6 +352,43 @@ def add_contact():
     return redirect(url_for("contacts_page"))
 
 
+@app.route("/contacts/bulk", methods=["POST"])
+@login_required
+def bulk_import_contacts():
+    import re as _re
+    raw = request.form.get("bulk", "").strip()
+    if not raw:
+        flash("Nothing to import", "error")
+        return redirect(url_for("contacts_page"))
+    count = 0
+    for line in raw.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Split by tab, or 2+ spaces
+        parts = [p.strip() for p in re.split(r"\t", line) if p.strip()]
+        if len(parts) < 2:
+            parts = [p.strip() for p in re.split(r"\s{2,}", line) if p.strip()]
+        if len(parts) < 2:
+            continue
+        name = parts[0]
+        # Phone is the last field that looks like a number
+        phone = ""
+        for p in reversed(parts):
+            digits = _re.sub(r"[^0-9]", "", p)
+            if len(digits) >= 7:
+                phone = digits
+                break
+        if not phone:
+            continue
+        if len(phone) == 10:
+            phone = "91" + phone
+        models.add_contact(name, phone)
+        count += 1
+    flash(f"Imported {count} contact(s)", "success")
+    return redirect(url_for("contacts_page"))
+
+
 @app.route("/contacts/delete/<int:contact_id>", methods=["POST"])
 @login_required
 def delete_contact(contact_id):
