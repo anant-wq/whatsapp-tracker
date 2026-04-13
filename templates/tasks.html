@@ -2,9 +2,10 @@
 {% block title %}Tasks — WA Tracker{% endblock %}
 {% block content %}
 <h2>Tasks</h2>
-<form method="POST" action="{{ url_for('bulk_delete_tasks') }}" id="bulk-form">
-<div style="margin-bottom:0.5rem">
-    <button type="submit" class="btn-del" onclick="return confirm('Delete selected tasks?')" style="padding:0.4rem 1rem">Delete Selected</button>
+<form method="POST" id="bulk-form">
+<div style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
+    <button type="button" class="btn-send" onclick="bulkSend()" style="padding:0.4rem 1rem">Send Selected</button>
+    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem">Delete Selected</button>
     <label style="margin-left:1rem;font-size:0.85rem;color:#666"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
 </div>
 <div class="table-wrap">
@@ -131,6 +132,28 @@ function toggleAll(master) {
     document.querySelectorAll('input[name="task_ids"]').forEach(function(cb) {
         cb.checked = master.checked;
     });
+}
+
+function getSelectedCount() {
+    return document.querySelectorAll('input[name="task_ids"]:checked').length;
+}
+
+function bulkSend() {
+    var n = getSelectedCount();
+    if (n === 0) { alert('No tasks selected'); return; }
+    if (!confirm('Send messages for ' + n + ' selected task(s)?')) return;
+    var form = document.getElementById('bulk-form');
+    form.action = "{{ url_for('bulk_send_tasks') }}";
+    form.submit();
+}
+
+function bulkDelete() {
+    var n = getSelectedCount();
+    if (n === 0) { alert('No tasks selected'); return; }
+    if (!confirm('Delete ' + n + ' selected task(s)?')) return;
+    var form = document.getElementById('bulk-form');
+    form.action = "{{ url_for('bulk_delete_tasks') }}";
+    form.submit();
 }
 </script>
 {% endblock %}

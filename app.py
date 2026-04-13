@@ -278,6 +278,43 @@ def bulk_delete_tasks():
     return redirect(url_for("tasks_page"))
 
 
+@app.route("/tasks/bulk-send", methods=["POST"])
+@login_required
+def bulk_send_tasks():
+    ids = request.form.getlist("task_ids")
+    tasks = models.get_tasks()
+    task_map = {t["id"]: t for t in tasks}
+    sent = 0
+    failed = 0
+    for tid in ids:
+        task = task_map.get(int(tid))
+        if not task:
+            continue
+        phone = task["phone"]
+        message = task["message"]
+        additional = task["additional_message"] or ""
+        if not phone or len(phone) < 5:
+            models.update_task(int(tid), last_sent="ERROR: No phone")
+            failed += 1
+            continue
+        full_message = (
+            f"{additional}\n\n--- Earlier context ---\n{message}"
+            if additional else message
+        )
+        success = _send_whatsapp(phone, full_message)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        models.update_task(
+            int(tid),
+            last_sent=f"Sent {now}" if success else f"Failed {now}"
+        )
+        if success:
+            sent += 1
+        else:
+            failed += 1
+    flash(f"Sent {sent}, failed {failed} of {len(ids)} selected", "success" if failed == 0 else "error")
+    return redirect(url_for("tasks_page"))
+
+
 # ---- Contacts (merged with Groups) ----
 
 @app.route("/contacts")
