@@ -13,8 +13,7 @@
         <tr>
             <th style="width:30px"></th>
             <th>Date</th>
-            <th>Person</th>
-            <th>Phone</th>
+            <th>Person / Phone</th>
             <th>Message</th>
             <th>Status</th>
             <th>Additional Msg</th>
@@ -27,64 +26,107 @@
         <tr>
             <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
             <td>{{ t.date }}</td>
-            <td colspan="2">
-                <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
-                    <select name="person" onchange="personChanged(this)" style="min-width:150px">
-                        <option value="" data-phone="">-- Select --</option>
-                        {% for p in people %}
-                        <option value="{{ p.name }}" data-phone="{{ p.phone }}" {% if t.person == p.name %}selected{% endif %}>{{ p.name }}</option>
-                        {% endfor %}
-                        {% if t.person and t.person not in people|map(attribute='name')|list %}
-                        <option value="{{ t.person }}" data-phone="{{ t.phone }}" selected>{{ t.person }}</option>
-                        {% endif %}
-                    </select>
-                    <input type="hidden" name="phone" value="{{ t.phone }}" class="phone-hidden">
-                    <input type="hidden" name="status" value="{{ t.status }}">
-                    <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
-                    <span class="mono" style="font-size:0.8rem;color:#888;min-width:100px" data-phone-display>{{ t.phone }}</span>
-                    <button type="submit" class="btn-sm">Save</button>
-                </form>
+            <td>
+                <select id="person-{{ t.id }}" onchange="personChanged({{ t.id }})" style="min-width:150px;margin-bottom:2px">
+                    <option value="" data-phone="">-- Select --</option>
+                    {% for p in people %}
+                    <option value="{{ p.name }}" data-phone="{{ p.phone }}" {% if t.person == p.name %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                    {% if t.person and t.person not in people|map(attribute='name')|list %}
+                    <option value="{{ t.person }}" data-phone="{{ t.phone }}" selected>{{ t.person }}</option>
+                    {% endif %}
+                </select>
+                <br><span class="mono" style="font-size:0.8rem;color:#888" id="phone-display-{{ t.id }}">{{ t.phone }}</span>
             </td>
             <td class="msg-cell">{{ t.message }}</td>
             <td>
-                <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
-                    <input type="hidden" name="person" value="{{ t.person }}">
-                    <input type="hidden" name="phone" value="{{ t.phone }}">
-                    <input name="status" value="{{ t.status }}" placeholder="Status">
-                    <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
-                    <button type="submit" class="btn-sm">Save</button>
-                </form>
+                <input id="status-{{ t.id }}" value="{{ t.status }}" placeholder="Status" style="width:100px">
             </td>
             <td>
-                <form method="POST" action="{{ url_for('send_reminder', task_id=t.id) }}" class="inline-form">
-                    <input name="additional_message" value="{{ t.additional_message }}" placeholder="Add note...">
-                    <button type="submit" class="btn-send">Send</button>
-                </form>
+                <input id="addmsg-{{ t.id }}" value="{{ t.additional_message }}" placeholder="Add note..." style="min-width:150px">
             </td>
-            <td>
-                <form method="POST" action="{{ url_for('delete_task', task_id=t.id) }}" class="inline-form" onsubmit="return confirm('Delete?')">
-                    <button type="submit" class="btn-del">Del</button>
-                </form>
+            <td style="white-space:nowrap">
+                <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
+                <button class="btn-send" onclick="sendTask({{ t.id }})" type="button">Send</button>
+                <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
             </td>
-            <td class="status-cell">{{ t.last_sent }}</td>
+            <td class="status-cell" id="lastsent-{{ t.id }}">{{ t.last_sent }}</td>
         </tr>
     {% endfor %}
     {% if not tasks %}
-        <tr><td colspan="9" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
+        <tr><td colspan="8" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
     {% endif %}
     </tbody>
 </table>
 </div>
 </form>
+
+<!-- Hidden forms for actions -->
+<form method="POST" id="save-form" style="display:none">
+    <input type="hidden" name="person" id="save-person">
+    <input type="hidden" name="phone" id="save-phone">
+    <input type="hidden" name="status" id="save-status">
+    <input type="hidden" name="additional_message" id="save-addmsg">
+</form>
+<form method="POST" id="send-form" style="display:none">
+    <input type="hidden" name="additional_message" id="send-addmsg">
+</form>
+<form method="POST" id="delete-form" style="display:none"></form>
+
 <script>
-function personChanged(select) {
-    var opt = select.options[select.selectedIndex];
-    var phone = opt.getAttribute('data-phone') || '';
-    var form = select.closest('form');
-    form.querySelector('.phone-hidden').value = phone;
-    var display = form.querySelector('[data-phone-display]');
-    if (display) display.textContent = phone;
+function getTaskData(id) {
+    var sel = document.getElementById('person-' + id);
+    var opt = sel.options[sel.selectedIndex];
+    return {
+        person: sel.value,
+        phone: opt.getAttribute('data-phone') || '',
+        status: document.getElementById('status-' + id).value,
+        addmsg: document.getElementById('addmsg-' + id).value
+    };
 }
+
+function personChanged(id) {
+    var data = getTaskData(id);
+    document.getElementById('phone-display-' + id).textContent = data.phone;
+}
+
+function saveTask(id) {
+    var data = getTaskData(id);
+    var form = document.getElementById('save-form');
+    form.action = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
+    document.getElementById('save-person').value = data.person;
+    document.getElementById('save-phone').value = data.phone;
+    document.getElementById('save-status').value = data.status;
+    document.getElementById('save-addmsg').value = data.addmsg;
+    form.submit();
+}
+
+function sendTask(id) {
+    // Save first, then send
+    var data = getTaskData(id);
+    // First save the current state via fetch, then send
+    var saveUrl = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
+    var formData = new FormData();
+    formData.append('person', data.person);
+    formData.append('phone', data.phone);
+    formData.append('status', data.status);
+    formData.append('additional_message', data.addmsg);
+    fetch(saveUrl, { method: 'POST', body: formData, redirect: 'manual' }).then(function() {
+        // Now send
+        var sendForm = document.getElementById('send-form');
+        sendForm.action = "{{ url_for('send_reminder', task_id=0) }}".replace('/0', '/' + id);
+        document.getElementById('send-addmsg').value = data.addmsg;
+        sendForm.submit();
+    });
+}
+
+function deleteTask(id) {
+    if (!confirm('Delete this task?')) return;
+    var form = document.getElementById('delete-form');
+    form.action = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
+    form.submit();
+}
+
 function toggleAll(master) {
     document.querySelectorAll('input[name="task_ids"]').forEach(function(cb) {
         cb.checked = master.checked;
