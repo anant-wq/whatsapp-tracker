@@ -21,8 +21,9 @@
 
 <!-- Contacts table -->
 <h3 style="margin-top:1.5rem">Contacts ({{ contacts|length }})</h3>
+<input type="text" id="contact-search" placeholder="Search contacts..." oninput="filterContacts()" style="width:100%;max-width:400px;padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;margin-bottom:0.5rem">
 <div class="table-wrap">
-<table>
+<table id="contacts-table">
     <thead>
         <tr>
             <th>Name</th>
@@ -87,4 +88,15 @@
     </tbody>
 </table>
 </div>
+
+<script>
+function filterContacts() {
+    var query = document.getElementById('contact-search').value.toLowerCase();
+    var rows = document.querySelectorAll('#contacts-table tbody tr');
+    rows.forEach(function(row) {
+        var text = row.textContent.toLowerCase();
+        row.style.display = text.indexOf(query) === -1 ? 'none' : '';
+    });
+}
+</script>
 {% endblock %}

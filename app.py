@@ -2,7 +2,7 @@ import os
 import re
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 
 import requests
@@ -104,7 +104,7 @@ def webhook_get():
     return jsonify({
         "status": "active",
         "service": "WhatsApp Task Tracker",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone(timedelta(hours=5, minutes=30))).isoformat()
     })
 
 
@@ -175,11 +175,11 @@ def webhook_post():
 
 def _parse_timestamp(ts):
     if ts is None:
-        return datetime.now().strftime("%Y-%m-%d")
+        return datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d")
     if isinstance(ts, (int, float)):
         ts = ts if ts > 9999999999 else ts * 1000
         return datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
-    return datetime.now().strftime("%Y-%m-%d")
+    return datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d")
 
 
 # ---- Helper: build people list (contacts + groups combined) ----
@@ -236,7 +236,7 @@ def send_reminder(task_id):
     )
 
     success = _send_whatsapp(phone, full_message)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
     models.update_task(
         task_id,
         last_sent=f"Sent {now}" if success else f"Failed {now}",
@@ -302,7 +302,7 @@ def bulk_send_tasks():
             if additional else message
         )
         success = _send_whatsapp(phone, full_message)
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
         models.update_task(
             int(tid),
             last_sent=f"Sent {now}" if success else f"Failed {now}"
@@ -444,7 +444,7 @@ def send_group_message(group_id):
 
     jid = group["group_jid"]
     success = _send_whatsapp(jid, message)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
     models.update_group(group_id, last_sent=f"Sent {now}" if success else f"Failed {now}")
     flash("Message sent!" if success else "Send failed", "success" if success else "error")
     return redirect(url_for("contacts_page"))
