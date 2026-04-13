@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Groups — WA Tracker{% endblock %}
+{% block content %}
+<h2>Groups</h2>
+<form method="POST" action="{{ url_for('fetch_groups') }}" style="margin-bottom:1rem">
+    <button type="submit" class="btn">Fetch Groups from WhatsApp</button>
+</form>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Group Name</th>
+            <th>Group JID</th>
+            <th>Message to Send</th>
+            <th>Action</th>
+            <th>Last Sent</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for g in groups %}
+        <tr>
+            <td>{{ g.group_name }}</td>
+            <td class="mono">{{ g.group_jid }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('send_group_message', group_id=g.id) }}" class="inline-form" id="group-form-{{ g.id }}">
+                    <input name="message" placeholder="Type message..." style="width:100%">
+                </form>
+            </td>
+            <td>
+                <button type="submit" form="group-form-{{ g.id }}" class="btn-send">Send</button>
+            </td>
+            <td class="status-cell">{{ g.last_sent }}</td>
+        </tr>
+    {% endfor %}
+    {% if not groups %}
+        <tr><td colspan="5" class="empty">No groups yet. Click "Fetch Groups" to load them.</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

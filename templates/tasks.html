@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Tasks — WA Tracker{% endblock %}
+{% block content %}
+<h2>Tasks</h2>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Person</th>
+            <th>Phone</th>
+            <th>Message</th>
+            <th>Status</th>
+            <th>Additional Msg</th>
+            <th>Actions</th>
+            <th>Last Sent</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for t in tasks %}
+        <tr>
+            <td>{{ t.date }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
+                    <input name="person" value="{{ t.person }}" placeholder="Name">
+                    <input type="hidden" name="status" value="{{ t.status }}">
+                    <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
+                    <button type="submit" class="btn-sm" title="Save">Save</button>
+                </form>
+            </td>
+            <td class="mono">{{ t.phone }}</td>
+            <td class="msg-cell">{{ t.message }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
+                    <input type="hidden" name="person" value="{{ t.person }}">
+                    <input name="status" value="{{ t.status }}" placeholder="Status">
+                    <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
+                    <button type="submit" class="btn-sm">Save</button>
+                </form>
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('send_reminder', task_id=t.id) }}" class="inline-form">
+                    <input name="additional_message" value="{{ t.additional_message }}" placeholder="Add note...">
+                    <button type="submit" class="btn-send" title="Send reminder">Send</button>
+                </form>
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('delete_task', task_id=t.id) }}" class="inline-form" onsubmit="return confirm('Delete this task?')">
+                    <button type="submit" class="btn-del" title="Delete">Del</button>
+                </form>
+            </td>
+            <td class="status-cell">{{ t.last_sent }}</td>
+        </tr>
+    {% endfor %}
+    {% if not tasks %}
+        <tr><td colspan="8" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 install:*)",
+      "Bash(python3 app.py)",
+      "Bash(curl -s http://localhost:5003/webhook)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s -X POST http://localhost:5003/webhook -H 'Content-Type: application/json' -d '{\"event\":\"messages.upsert\",\"data\":{\"messages\":{\"key\":{\"fromMe\":false,\"remoteJid\":\"918447731703@s.whatsapp.net\",\"cleanedSenderPn\":\"918447731703\"},\"messageBody\":\"Test task from webhook\",\"message\":{\"conversation\":\"Test task from webhook\"},\"messageTimestamp\":1713000000}}}')",
+      "Bash(python3 -c ':*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

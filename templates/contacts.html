@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Contacts — WA Tracker{% endblock %}
+{% block content %}
+<h2>Contacts</h2>
+<form method="POST" action="{{ url_for('add_contact') }}" class="add-form">
+    <input name="name" placeholder="Name" required>
+    <input name="phone" placeholder="Phone (e.g. 918447731703)" required>
+    <button type="submit" class="btn">Add Contact</button>
+</form>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in contacts %}
+        <tr>
+            <td>{{ c.name }}</td>
+            <td class="mono">{{ c.phone }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('delete_contact', contact_id=c.id) }}" class="inline-form" onsubmit="return confirm('Delete contact?')">
+                    <button type="submit" class="btn-del">Delete</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    {% if not contacts %}
+        <tr><td colspan="3" class="empty">No contacts yet.</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

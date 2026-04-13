@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}WhatsApp Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav>
+        <div class="nav-brand">WA Tracker</div>
+        <div class="nav-links">
+            <a href="{{ url_for('tasks_page') }}" class="{% if request.endpoint == 'tasks_page' %}active{% endif %}">Tasks</a>
+            <a href="{{ url_for('groups_page') }}" class="{% if request.endpoint == 'groups_page' %}active{% endif %}">Groups</a>
+            <a href="{{ url_for('contacts_page') }}" class="{% if request.endpoint == 'contacts_page' %}active{% endif %}">Contacts</a>
+            <a href="{{ url_for('log_page') }}" class="{% if request.endpoint == 'log_page' %}active{% endif %}">Log</a>
+            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
+        </div>
+    </nav>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
