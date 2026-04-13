@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }} — Responses{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+    <h2>{{ form.title }}</h2>
+    <span style="color:#888;font-size:0.9rem">{{ responses|length }} response(s)</span>
+    <a href="{{ url_for('forms_page') }}" style="margin-left:auto;color:#128C7E;font-size:0.9rem">&larr; Back to Forms</a>
+</div>
+
+{% if responses %}
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Submitted By</th>
+            <th>Submitted At</th>
+            {% for field in form.fields %}
+            <th>{{ field.label }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in responses %}
+        <tr>
+            <td>{{ loop.revindex }}</td>
+            <td>{{ r.submitted_by or '—' }}</td>
+            <td class="status-cell">{{ r.submitted_at }}</td>
+            {% for field in form.fields %}
+            <td>{{ r.data.get(field.label, '') }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">No responses yet. Share the form link to collect data.</p>
+{% endif %}
+{% endblock %}

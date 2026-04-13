@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Forms — WA Tracker{% endblock %}
+{% block content %}
+<h2>Forms</h2>
+
+<details style="margin-bottom:1.5rem">
+    <summary style="cursor:pointer;color:#128C7E;font-weight:600;font-size:1rem">+ Create New Form</summary>
+    <form method="POST" action="{{ url_for('create_form') }}" style="margin-top:0.75rem;background:#fff;padding:1rem;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">
+        <div style="margin-bottom:0.75rem">
+            <label style="font-weight:600;display:block;margin-bottom:0.3rem">Form Title</label>
+            <input name="title" placeholder="e.g. Daily Production Report" required style="width:100%;max-width:400px;padding:0.5rem;border:1px solid #ccc;border-radius:4px">
+        </div>
+        <div style="margin-bottom:0.75rem">
+            <label style="font-weight:600;display:block;margin-bottom:0.3rem">Fields <span style="font-weight:400;color:#888">(one per line: Label | type | required/optional)</span></label>
+            <textarea name="fields" rows="6" placeholder="Name | text | required
+Phone | text | required
+Quantity | number | required
+Notes | textarea | optional" style="width:100%;padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:0.85rem"></textarea>
+            <p style="font-size:0.8rem;color:#888;margin-top:0.3rem">Types: text, number, textarea, email, date, select(opt1,opt2,opt3)</p>
+        </div>
+        <button type="submit" class="btn">Create Form</button>
+    </form>
+</details>
+
+{% if forms %}
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Form Name</th>
+            <th>Public Link</th>
+            <th>Responses</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for f in forms %}
+        <tr>
+            <td style="font-weight:600">{{ f.title }}</td>
+            <td>
+                <a href="{{ url_for('public_form', slug=f.slug, _external=True) }}" target="_blank" class="mono" style="font-size:0.8rem;color:#128C7E">
+                    {{ url_for('public_form', slug=f.slug, _external=True) }}
+                </a>
+                <button onclick="copyLink('{{ url_for('public_form', slug=f.slug, _external=True) }}')" style="margin-left:4px;background:none;border:1px solid #ccc;border-radius:3px;padding:0.15rem 0.4rem;cursor:pointer;font-size:0.75rem">Copy</button>
+            </td>
+            <td>
+                <a href="{{ url_for('form_responses', form_id=f.id) }}" style="color:#128C7E;font-weight:600">{{ f.response_count }} responses</a>
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('delete_form', form_id=f.id) }}" class="inline-form" onsubmit="return confirm('Delete this form and all its responses?')">
+                    <button type="submit" class="btn-del">Delete</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p style="color:#999;text-align:center;padding:2rem">No forms yet. Create one above.</p>
+{% endif %}
+
+<script>
+function copyLink(url) {
+    navigator.clipboard.writeText(url).then(function() {
+        alert('Link copied!');
+    });
+}
+</script>
+{% endblock %}

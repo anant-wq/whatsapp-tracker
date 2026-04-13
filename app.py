@@ -450,6 +450,120 @@ def send_group_message(group_id):
     return redirect(url_for("contacts_page"))
 
 
+# ---- Checklists ----
+
+@app.route("/checklists")
+@login_required
+def checklists_page():
+    items = models.get_checklists()
+    daily = [i for i in items if i["frequency"] == "daily"]
+    weekly = [i for i in items if i["frequency"] == "weekly"]
+    monthly = [i for i in items if i["frequency"] == "monthly"]
+    return render_template("checklists.html", daily=daily, weekly=weekly, monthly=monthly)
+
+
+@app.route("/checklists/add", methods=["POST"])
+@login_required
+def add_checklist():
+    title = request.form.get("title", "").strip()
+    frequency = request.form.get("frequency", "daily")
+    if title:
+        models.add_checklist(title, frequency)
+        flash("Item added", "success")
+    else:
+        flash("Title required", "error")
+    return redirect(url_for("checklists_page"))
+
+
+@app.route("/checklists/toggle/<int:item_id>", methods=["POST"])
+@login_required
+def toggle_checklist(item_id):
+    models.toggle_checklist(item_id)
+    return redirect(url_for("checklists_page"))
+
+
+@app.route("/checklists/delete/<int:item_id>", methods=["POST"])
+@login_required
+def delete_checklist(item_id):
+    models.delete_checklist(item_id)
+    flash("Item deleted", "success")
+    return redirect(url_for("checklists_page"))
+
+
+# ---- Forms ----
+
+@app.route("/forms")
+@login_required
+def forms_page():
+    forms = models.get_forms()
+    return render_template("forms.html", forms=forms)
+
+
+@app.route("/forms/create", methods=["POST"])
+@login_required
+def create_form():
+    title = request.form.get("title", "").strip()
+    fields_raw = request.form.get("fields", "").strip()
+    if not title or not fields_raw:
+        flash("Title and fields required", "error")
+        return redirect(url_for("forms_page"))
+
+    fields = []
+    for line in fields_raw.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        label = parts[0]
+        ftype = parts[1] if len(parts) > 1 else "text"
+        required = "required" in (parts[2].lower() if len(parts) > 2 else "required")
+        fields.append({"label": label, "type": ftype, "required": required})
+
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    # Ensure unique slug
+    existing = models.get_form_by_slug(slug)
+    if existing:
+        slug = slug + "-" + secrets.token_hex(3)
+
+    models.add_form(title, slug, fields)
+    flash("Form created!", "success")
+    return redirect(url_for("forms_page"))
+
+
+@app.route("/forms/delete/<int:form_id>", methods=["POST"])
+@login_required
+def delete_form(form_id):
+    models.delete_form(form_id)
+    flash("Form deleted", "success")
+    return redirect(url_for("forms_page"))
+
+
+@app.route("/forms/responses/<int:form_id>")
+@login_required
+def form_responses(form_id):
+    form = models.get_form_by_id(form_id)
+    if not form:
+        flash("Form not found", "error")
+        return redirect(url_for("forms_page"))
+    responses = models.get_form_responses(form_id)
+    return render_template("form_responses.html", form=form, responses=responses)
+
+
+@app.route("/f/<slug>", methods=["GET", "POST"])
+def public_form(slug):
+    form = models.get_form_by_slug(slug)
+    if not form:
+        return "Form not found", 404
+    if request.method == "POST":
+        data = {}
+        for field in form["fields"]:
+            data[field["label"]] = request.form.get(field["label"], "")
+        name = request.form.get("_name", "")
+        models.add_form_response(form["id"], data, submitted_by=name)
+        return render_template("form_thanks.html", form=form)
+    return render_template("form_public.html", form=form)
+
+
 # ---- Webhook Log ----
 
 @app.route("/log")

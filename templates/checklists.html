@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Checklists — WA Tracker{% endblock %}
+{% block content %}
+<h2>Checklists</h2>
+
+<form method="POST" action="{{ url_for('add_checklist') }}" class="add-form">
+    <input name="title" placeholder="Item title" required style="flex:1">
+    <select name="frequency">
+        <option value="daily">Daily</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+    </select>
+    <button type="submit" class="btn">Add Item</button>
+</form>
+
+{% macro render_section(title, items, color) %}
+<div class="checklist-section">
+    <h3 style="margin-top:1.5rem;color:{{ color }}">{{ title }} ({{ items|selectattr('done')|list|length }}/{{ items|length }})</h3>
+    {% if items %}
+    <div class="checklist-items">
+        {% for item in items %}
+        <div class="checklist-item {% if item.done %}done{% endif %}">
+            <form method="POST" action="{{ url_for('toggle_checklist', item_id=item.id) }}" class="inline-form">
+                <button type="submit" class="check-btn {% if item.done %}checked{% endif %}">
+                    {% if item.done %}&#10003;{% else %}&nbsp;{% endif %}
+                </button>
+            </form>
+            <span class="checklist-title {% if item.done %}struck{% endif %}">{{ item.title }}</span>
+            <form method="POST" action="{{ url_for('delete_checklist', item_id=item.id) }}" class="inline-form" onsubmit="return confirm('Delete this item?')" style="margin-left:auto">
+                <button type="submit" class="btn-del" style="font-size:0.75rem;padding:0.15rem 0.4rem">x</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:#999;font-size:0.9rem;margin-top:0.5rem">No items yet.</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{{ render_section("Daily", daily, "#128C7E") }}
+{{ render_section("Weekly", weekly, "#1a6dd4") }}
+{{ render_section("Monthly", monthly, "#7c3aed") }}
+
+<style>
+.checklist-items { margin-top:0.5rem; }
+.checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.8rem;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    border-radius: 4px;
+    margin-bottom: 2px;
+}
+.checklist-item.done { opacity: 0.6; }
+.check-btn {
+    width: 28px; height: 28px;
+    border: 2px solid #128C7E;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #128C7E;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.check-btn.checked { background: #128C7E; color: #fff; }
+.checklist-title { font-size: 0.95rem; }
+.checklist-title.struck { text-decoration: line-through; color: #999; }
+</style>
+{% endblock %}
