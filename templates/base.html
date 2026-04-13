@@ -11,8 +11,7 @@
         <div class="nav-brand">WA Tracker</div>
         <div class="nav-links">
             <a href="{{ url_for('tasks_page') }}" class="{% if request.endpoint == 'tasks_page' %}active{% endif %}">Tasks</a>
-            <a href="{{ url_for('groups_page') }}" class="{% if request.endpoint == 'groups_page' %}active{% endif %}">Groups</a>
-            <a href="{{ url_for('contacts_page') }}" class="{% if request.endpoint == 'contacts_page' %}active{% endif %}">Contacts</a>
+            <a href="{{ url_for('contacts_page') }}" class="{% if request.endpoint == 'contacts_page' %}active{% endif %}">Contacts & Groups</a>
             <a href="{{ url_for('log_page') }}" class="{% if request.endpoint == 'log_page' %}active{% endif %}">Log</a>
             <a href="{{ url_for('logout') }}" class="logout">Logout</a>
         </div>

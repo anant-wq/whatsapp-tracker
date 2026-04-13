@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import secrets
 from datetime import datetime
@@ -39,7 +40,6 @@ WASENDER_BASE = "https://api.wasenderapi.com"
 WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
 MY_PHONE = os.environ.get("MY_PHONE", "918447731703")
 ALLOWED_EMAIL = os.environ.get("ALLOWED_EMAIL", "anant@xpertpack.in")
-APP_PREFIX = os.environ.get("APP_PREFIX", "/whatsapp")  # for nginx sub-path
 
 # ---- OAuth ----
 
@@ -123,7 +123,6 @@ def webhook_post():
         msgs = inner.get("messages", {})
         key = msgs.get("key", {})
 
-        # Extract body
         body = msgs.get("messageBody", "")
         if not body and msgs.get("message"):
             body = msgs["message"].get("conversation", "")
@@ -137,14 +136,12 @@ def webhook_post():
             or key.get("cleanedParticipantPn")
             or key.get("senderPn", "")
         )
-        import re
         sender_phone = re.sub(r"@.*", "", sender_phone)
         sender_phone = re.sub(r"[^0-9]", "", sender_phone)
         is_group = "@g.us" in chat_jid
 
         models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group}")
 
-        # Group #todo capture
         if is_group and body and "#todo" in body.lower():
             is_my_phone = (MY_PHONE in sender_phone or sender_phone in MY_PHONE)
             if is_my_phone:
@@ -152,9 +149,7 @@ def webhook_post():
                 date_str = _parse_timestamp(ts)
                 group_name = models.get_group_name_by_jid(chat_jid)
                 models.add_task(
-                    date_str=date_str,
-                    message=body,
-                    phone=chat_jid,
+                    date_str=date_str, message=body, phone=chat_jid,
                     status=f"#todo | {group_name}"
                 )
                 return jsonify({"status": "ok", "message": "group todo added"})
@@ -187,7 +182,17 @@ def _parse_timestamp(ts):
     return datetime.now().strftime("%Y-%m-%d")
 
 
-# ---- Pages ----
+# ---- Helper: build people list (contacts + groups combined) ----
+
+def _get_people():
+    contacts = models.get_contacts()
+    groups = models.get_groups()
+    people = [{"name": c["name"], "phone": c["phone"]} for c in contacts]
+    people += [{"name": g["group_name"], "phone": g["group_jid"]} for g in groups]
+    return people
+
+
+# ---- Tasks ----
 
 @app.route("/")
 @login_required
@@ -199,11 +204,7 @@ def index():
 @login_required
 def tasks_page():
     tasks = models.get_tasks()
-    contacts = models.get_contacts()
-    groups = models.get_groups()
-    # Build combined list: contacts + groups
-    people = [{"name": c["name"], "phone": c["phone"]} for c in contacts]
-    people += [{"name": g["group_name"], "phone": g["group_jid"]} for g in groups]
+    people = _get_people()
     return render_template("tasks.html", tasks=tasks, people=people)
 
 
@@ -252,10 +253,7 @@ def update_task(task_id):
     phone = request.form.get("phone", "")
     status = request.form.get("status", "")
     additional = request.form.get("additional_message", "")
-    kwargs = dict(person=person, status=status, additional_message=additional)
-    if phone:
-        kwargs["phone"] = phone
-    models.update_task(task_id, **kwargs)
+    models.update_task(task_id, person=person, phone=phone, status=status, additional_message=additional)
     flash("Task updated", "success")
     return redirect(url_for("tasks_page"))
 
@@ -268,84 +266,26 @@ def delete_task(task_id):
     return redirect(url_for("tasks_page"))
 
 
-# ---- Groups ----
-
-@app.route("/groups")
+@app.route("/tasks/bulk-delete", methods=["POST"])
 @login_required
-def groups_page():
-    groups = models.get_groups()
-    return render_template("groups.html", groups=groups)
+def bulk_delete_tasks():
+    ids = request.form.getlist("task_ids")
+    count = 0
+    for tid in ids:
+        models.delete_task(int(tid))
+        count += 1
+    flash(f"Deleted {count} task(s)", "success")
+    return redirect(url_for("tasks_page"))
 
 
-@app.route("/groups/fetch", methods=["POST"])
-@login_required
-def fetch_groups():
-    if not WASENDER_API_KEY:
-        flash("No API key configured", "error")
-        return redirect(url_for("groups_page"))
-
-    try:
-        resp = requests.get(
-            f"{WASENDER_BASE}/api/groups",
-            headers={
-                "Authorization": f"Bearer {WASENDER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            timeout=30
-        )
-        models.log_event(f"FETCH_GROUPS ({resp.status_code})", resp.text[:3000])
-
-        if resp.status_code < 200 or resp.status_code >= 300:
-            flash(f"Failed to fetch groups (HTTP {resp.status_code})", "error")
-            return redirect(url_for("groups_page"))
-
-        data = resp.json()
-        groups = data.get("data") or data if isinstance(data, list) else data.get("data", [])
-        if not isinstance(groups, list):
-            flash("Unexpected response format", "error")
-            return redirect(url_for("groups_page"))
-
-        models.upsert_groups(groups)
-        flash(f"Found {len(groups)} group(s)", "success")
-    except Exception as e:
-        flash(f"Error: {e}", "error")
-
-    return redirect(url_for("groups_page"))
-
-
-@app.route("/groups/send/<int:group_id>", methods=["POST"])
-@login_required
-def send_group_message(group_id):
-    groups = models.get_groups()
-    group = None
-    for g in groups:
-        if g["id"] == group_id:
-            group = g
-            break
-    if not group:
-        flash("Group not found", "error")
-        return redirect(url_for("groups_page"))
-
-    message = request.form.get("message", "").strip()
-    if not message:
-        flash("No message to send", "error")
-        return redirect(url_for("groups_page"))
-
-    jid = group["group_jid"]
-    success = _send_whatsapp(jid, message)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    models.update_group(group_id, last_sent=f"Sent {now}" if success else f"Failed {now}")
-    flash("Message sent!" if success else "Send failed", "success" if success else "error")
-    return redirect(url_for("groups_page"))
-
-
-# ---- Contacts ----
+# ---- Contacts (merged with Groups) ----
 
 @app.route("/contacts")
 @login_required
 def contacts_page():
     contacts = models.get_contacts()
-    return render_template("contacts.html", contacts=contacts)
+    groups = models.get_groups()
+    return render_template("contacts.html", contacts=contacts, groups=groups)
 
 
 @app.route("/contacts/add", methods=["POST"])
@@ -364,7 +304,6 @@ def add_contact():
 @app.route("/contacts/bulk", methods=["POST"])
 @login_required
 def bulk_import_contacts():
-    import re as _re
     raw = request.form.get("bulk", "").strip()
     if not raw:
         flash("Nothing to import", "error")
@@ -374,17 +313,15 @@ def bulk_import_contacts():
         line = line.strip()
         if not line:
             continue
-        # Split by tab, or 2+ spaces
         parts = [p.strip() for p in re.split(r"\t", line) if p.strip()]
         if len(parts) < 2:
             parts = [p.strip() for p in re.split(r"\s{2,}", line) if p.strip()]
         if len(parts) < 2:
             continue
         name = parts[0]
-        # Phone is the last field that looks like a number
         phone = ""
         for p in reversed(parts):
-            digits = _re.sub(r"[^0-9]", "", p)
+            digits = re.sub(r"[^0-9]", "", p)
             if len(digits) >= 7:
                 phone = digits
                 break
@@ -403,6 +340,76 @@ def bulk_import_contacts():
 def delete_contact(contact_id):
     models.delete_contact(contact_id)
     flash("Contact deleted", "success")
+    return redirect(url_for("contacts_page"))
+
+
+# ---- Groups (fetch + send kept, but page merged into contacts) ----
+
+@app.route("/groups")
+@login_required
+def groups_page():
+    return redirect(url_for("contacts_page"))
+
+
+@app.route("/groups/fetch", methods=["POST"])
+@login_required
+def fetch_groups():
+    if not WASENDER_API_KEY:
+        flash("No API key configured", "error")
+        return redirect(url_for("contacts_page"))
+
+    try:
+        resp = requests.get(
+            f"{WASENDER_BASE}/api/groups",
+            headers={
+                "Authorization": f"Bearer {WASENDER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            timeout=30
+        )
+        models.log_event(f"FETCH_GROUPS ({resp.status_code})", resp.text[:3000])
+
+        if resp.status_code < 200 or resp.status_code >= 300:
+            flash(f"Failed to fetch groups (HTTP {resp.status_code})", "error")
+            return redirect(url_for("contacts_page"))
+
+        data = resp.json()
+        groups = data.get("data") or data if isinstance(data, list) else data.get("data", [])
+        if not isinstance(groups, list):
+            flash("Unexpected response format", "error")
+            return redirect(url_for("contacts_page"))
+
+        models.upsert_groups(groups)
+        flash(f"Found {len(groups)} group(s)", "success")
+    except Exception as e:
+        flash(f"Error: {e}", "error")
+
+    return redirect(url_for("contacts_page"))
+
+
+@app.route("/groups/send/<int:group_id>", methods=["POST"])
+@login_required
+def send_group_message(group_id):
+    groups = models.get_groups()
+    group = None
+    for g in groups:
+        if g["id"] == group_id:
+            group = g
+            break
+    if not group:
+        flash("Group not found", "error")
+        return redirect(url_for("contacts_page"))
+
+    message = request.form.get("message", "").strip()
+    if not message:
+        flash("No message to send", "error")
+        return redirect(url_for("contacts_page"))
+
+    jid = group["group_jid"]
+    success = _send_whatsapp(jid, message)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    models.update_group(group_id, last_sent=f"Sent {now}" if success else f"Failed {now}")
+    flash("Message sent!" if success else "Send failed", "success" if success else "error")
     return redirect(url_for("contacts_page"))
 
 

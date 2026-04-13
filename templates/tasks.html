@@ -2,10 +2,16 @@
 {% block title %}Tasks — WA Tracker{% endblock %}
 {% block content %}
 <h2>Tasks</h2>
+<form method="POST" action="{{ url_for('bulk_delete_tasks') }}" id="bulk-form">
+<div style="margin-bottom:0.5rem">
+    <button type="submit" class="btn-del" onclick="return confirm('Delete selected tasks?')" style="padding:0.4rem 1rem">Delete Selected</button>
+    <label style="margin-left:1rem;font-size:0.85rem;color:#666"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
+</div>
 <div class="table-wrap">
 <table>
     <thead>
         <tr>
+            <th style="width:30px"></th>
             <th>Date</th>
             <th>Person</th>
             <th>Phone</th>
@@ -19,29 +25,31 @@
     <tbody>
     {% for t in tasks %}
         <tr>
+            <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
             <td>{{ t.date }}</td>
-            <td>
+            <td colspan="2">
                 <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
-                    <select name="person" onchange="updatePhone(this, 'phone_{{ t.id }}')" style="min-width:140px">
-                        <option value="">-- Select --</option>
+                    <select name="person" onchange="personChanged(this)" style="min-width:150px">
+                        <option value="" data-phone="">-- Select --</option>
                         {% for p in people %}
                         <option value="{{ p.name }}" data-phone="{{ p.phone }}" {% if t.person == p.name %}selected{% endif %}>{{ p.name }}</option>
                         {% endfor %}
                         {% if t.person and t.person not in people|map(attribute='name')|list %}
-                        <option value="{{ t.person }}" selected>{{ t.person }}</option>
+                        <option value="{{ t.person }}" data-phone="{{ t.phone }}" selected>{{ t.person }}</option>
                         {% endif %}
                     </select>
-                    <input type="hidden" name="phone" id="phone_{{ t.id }}" value="{{ t.phone }}">
+                    <input type="hidden" name="phone" value="{{ t.phone }}" class="phone-hidden">
                     <input type="hidden" name="status" value="{{ t.status }}">
                     <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
-                    <button type="submit" class="btn-sm" title="Save">Save</button>
+                    <span class="mono" style="font-size:0.8rem;color:#888;min-width:100px" data-phone-display>{{ t.phone }}</span>
+                    <button type="submit" class="btn-sm">Save</button>
                 </form>
             </td>
-            <td class="mono">{{ t.phone }}</td>
             <td class="msg-cell">{{ t.message }}</td>
             <td>
                 <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
                     <input type="hidden" name="person" value="{{ t.person }}">
+                    <input type="hidden" name="phone" value="{{ t.phone }}">
                     <input name="status" value="{{ t.status }}" placeholder="Status">
                     <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
                     <button type="submit" class="btn-sm">Save</button>
@@ -50,28 +58,37 @@
             <td>
                 <form method="POST" action="{{ url_for('send_reminder', task_id=t.id) }}" class="inline-form">
                     <input name="additional_message" value="{{ t.additional_message }}" placeholder="Add note...">
-                    <button type="submit" class="btn-send" title="Send reminder">Send</button>
+                    <button type="submit" class="btn-send">Send</button>
                 </form>
             </td>
             <td>
-                <form method="POST" action="{{ url_for('delete_task', task_id=t.id) }}" class="inline-form" onsubmit="return confirm('Delete this task?')">
-                    <button type="submit" class="btn-del" title="Delete">Del</button>
+                <form method="POST" action="{{ url_for('delete_task', task_id=t.id) }}" class="inline-form" onsubmit="return confirm('Delete?')">
+                    <button type="submit" class="btn-del">Del</button>
                 </form>
             </td>
             <td class="status-cell">{{ t.last_sent }}</td>
         </tr>
     {% endfor %}
     {% if not tasks %}
-        <tr><td colspan="8" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
+        <tr><td colspan="9" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
     {% endif %}
     </tbody>
 </table>
 </div>
+</form>
 <script>
-function updatePhone(select, phoneId) {
+function personChanged(select) {
     var opt = select.options[select.selectedIndex];
     var phone = opt.getAttribute('data-phone') || '';
-    document.getElementById(phoneId).value = phone;
+    var form = select.closest('form');
+    form.querySelector('.phone-hidden').value = phone;
+    var display = form.querySelector('[data-phone-display]');
+    if (display) display.textContent = phone;
+}
+function toggleAll(master) {
+    document.querySelectorAll('input[name="task_ids"]').forEach(function(cb) {
+        cb.checked = master.checked;
+    });
 }
 </script>
 {% endblock %}

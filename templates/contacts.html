@@ -1,13 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Contacts — WA Tracker{% endblock %}
+{% block title %}Contacts & Groups — WA Tracker{% endblock %}
 {% block content %}
-<h2>Contacts</h2>
+<h2>Contacts & Groups</h2>
+
+<!-- Add single contact -->
 <form method="POST" action="{{ url_for('add_contact') }}" class="add-form">
     <input name="name" placeholder="Name" required>
     <input name="phone" placeholder="Phone (e.g. 918447731703)" required>
     <button type="submit" class="btn">Add Contact</button>
 </form>
 
+<!-- Bulk import -->
 <details style="margin-bottom:1rem">
     <summary style="cursor:pointer;color:#128C7E;font-weight:600">Bulk Import (paste names &amp; numbers)</summary>
     <form method="POST" action="{{ url_for('bulk_import_contacts') }}" style="margin-top:0.5rem">
@@ -15,6 +18,9 @@
         <button type="submit" class="btn" style="margin-top:0.5rem">Import All</button>
     </form>
 </details>
+
+<!-- Contacts table -->
+<h3 style="margin-top:1.5rem">Contacts ({{ contacts|length }})</h3>
 <div class="table-wrap">
 <table>
     <thead>
@@ -38,6 +44,45 @@
     {% endfor %}
     {% if not contacts %}
         <tr><td colspan="3" class="empty">No contacts yet.</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+
+<!-- Groups table -->
+<h3 style="margin-top:2rem">Groups ({{ groups|length }})</h3>
+<form method="POST" action="{{ url_for('fetch_groups') }}" style="margin-bottom:0.5rem">
+    <button type="submit" class="btn">Fetch Groups from WhatsApp</button>
+</form>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Group Name</th>
+            <th>Group JID</th>
+            <th>Message to Send</th>
+            <th>Action</th>
+            <th>Last Sent</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for g in groups %}
+        <tr>
+            <td>{{ g.group_name }}</td>
+            <td class="mono">{{ g.group_jid }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('send_group_message', group_id=g.id) }}" class="inline-form" id="group-form-{{ g.id }}">
+                    <input name="message" placeholder="Type message..." style="width:100%">
+                </form>
+            </td>
+            <td>
+                <button type="submit" form="group-form-{{ g.id }}" class="btn-send">Send</button>
+            </td>
+            <td class="status-cell">{{ g.last_sent }}</td>
+        </tr>
+    {% endfor %}
+    {% if not groups %}
+        <tr><td colspan="5" class="empty">No groups yet. Click "Fetch Groups" to load them.</td></tr>
     {% endif %}
     </tbody>
 </table>

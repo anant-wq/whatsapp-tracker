@@ -9,7 +9,16 @@
       "Bash(python3 -c ':*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh repo:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(ssh root@139.84.211.50 \"cd /opt && git clone https://github.com/anant-wq/whatsapp-tracker.git && cd whatsapp-tracker && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt\")",
+      "Bash(sshpass -p 'Ev4$QLs]d[Hi4JpZ' ssh -o StrictHostKeyChecking=no root@139.84.211.50 'echo connected')",
+      "Bash(sshpass -p 'Ev4$QLs]d[Hi4JpZ' ssh -o StrictHostKeyChecking=no root@139.84.211.50 'cd /opt && git clone https://github.com/anant-wq/whatsapp-tracker.git 2>&1 && cd whatsapp-tracker && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt 2>&1 | tail -5')",
+      "Bash(sshpass -p:*)",
+      "Bash(curl -s -o /dev/null -w \"%{redirect_url}\" \"https://tools.xpertpack.in/whatsapp/auth/login\")",
+      "Bash(curl -s -X POST https://tools.xpertpack.in/whatsapp/webhook -H 'Content-Type: application/json' -d '{\"event\":\"messages.upsert\",\"data\":{\"messages\":{\"key\":{\"fromMe\":false,\"remoteJid\":\"918447731703@s.whatsapp.net\",\"cleanedSenderPn\":\"918447731703\"},\"messageBody\":\"Test task - webhook is working!\",\"message\":{\"conversation\":\"Test task - webhook is working!\"},\"messageTimestamp\":1744540000}}}')"
     ]
   }
 }
