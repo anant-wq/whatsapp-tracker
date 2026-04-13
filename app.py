@@ -199,7 +199,12 @@ def index():
 @login_required
 def tasks_page():
     tasks = models.get_tasks()
-    return render_template("tasks.html", tasks=tasks)
+    contacts = models.get_contacts()
+    groups = models.get_groups()
+    # Build combined list: contacts + groups
+    people = [{"name": c["name"], "phone": c["phone"]} for c in contacts]
+    people += [{"name": g["group_name"], "phone": g["group_jid"]} for g in groups]
+    return render_template("tasks.html", tasks=tasks, people=people)
 
 
 @app.route("/tasks/send/<int:task_id>", methods=["POST"])
@@ -244,9 +249,13 @@ def send_reminder(task_id):
 @login_required
 def update_task(task_id):
     person = request.form.get("person", "")
+    phone = request.form.get("phone", "")
     status = request.form.get("status", "")
     additional = request.form.get("additional_message", "")
-    models.update_task(task_id, person=person, status=status, additional_message=additional)
+    kwargs = dict(person=person, status=status, additional_message=additional)
+    if phone:
+        kwargs["phone"] = phone
+    models.update_task(task_id, **kwargs)
     flash("Task updated", "success")
     return redirect(url_for("tasks_page"))
 

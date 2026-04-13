@@ -22,7 +22,16 @@
             <td>{{ t.date }}</td>
             <td>
                 <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="inline-form">
-                    <input name="person" value="{{ t.person }}" placeholder="Name">
+                    <select name="person" onchange="updatePhone(this, 'phone_{{ t.id }}')" style="min-width:140px">
+                        <option value="">-- Select --</option>
+                        {% for p in people %}
+                        <option value="{{ p.name }}" data-phone="{{ p.phone }}" {% if t.person == p.name %}selected{% endif %}>{{ p.name }}</option>
+                        {% endfor %}
+                        {% if t.person and t.person not in people|map(attribute='name')|list %}
+                        <option value="{{ t.person }}" selected>{{ t.person }}</option>
+                        {% endif %}
+                    </select>
+                    <input type="hidden" name="phone" id="phone_{{ t.id }}" value="{{ t.phone }}">
                     <input type="hidden" name="status" value="{{ t.status }}">
                     <input type="hidden" name="additional_message" value="{{ t.additional_message }}">
                     <button type="submit" class="btn-sm" title="Save">Save</button>
@@ -58,4 +67,11 @@
     </tbody>
 </table>
 </div>
+<script>
+function updatePhone(select, phoneId) {
+    var opt = select.options[select.selectedIndex];
+    var phone = opt.getAttribute('data-phone') || '';
+    document.getElementById(phoneId).value = phone;
+}
+</script>
 {% endblock %}
