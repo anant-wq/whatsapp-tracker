@@ -13,10 +13,27 @@ from authlib.integrations.flask_client import OAuth
 
 import models
 
+
+# ---- Prefix middleware (app lives at /whatsapp/ behind nginx) ----
+
+class PrefixMiddleware:
+    def __init__(self, app, prefix=""):
+        self.app = app
+        self.prefix = prefix
+
+    def __call__(self, environ, start_response):
+        environ["SCRIPT_NAME"] = self.prefix
+        path = environ.get("PATH_INFO", "")
+        if path.startswith(self.prefix):
+            environ["PATH_INFO"] = path[len(self.prefix):]
+        return self.app(environ, start_response)
+
+
 # ---- Config ----
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.wsgi_app = PrefixMiddleware(app.wsgi_app, prefix=os.environ.get("APP_PREFIX", "/whatsapp"))
 
 WASENDER_BASE = "https://api.wasenderapi.com"
 WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
