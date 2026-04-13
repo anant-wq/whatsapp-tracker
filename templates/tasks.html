@@ -71,6 +71,19 @@
 <form method="POST" id="delete-form" style="display:none"></form>
 
 <script>
+// Restore scroll position after redirect
+(function() {
+    var pos = sessionStorage.getItem('scrollPos');
+    if (pos) {
+        sessionStorage.removeItem('scrollPos');
+        window.scrollTo(0, parseInt(pos));
+    }
+})();
+
+function saveScroll() {
+    sessionStorage.setItem('scrollPos', window.scrollY);
+}
+
 function getTaskData(id) {
     var sel = document.getElementById('person-' + id);
     var opt = sel.options[sel.selectedIndex];
@@ -95,6 +108,7 @@ function saveTask(id) {
     document.getElementById('save-phone').value = data.phone;
     document.getElementById('save-status').value = data.status;
     document.getElementById('save-addmsg').value = data.addmsg;
+    saveScroll();
     form.submit();
 }
 
@@ -113,6 +127,7 @@ function sendTask(id) {
         var sendForm = document.getElementById('send-form');
         sendForm.action = "{{ url_for('send_reminder', task_id=0) }}".replace('/0', '/' + id);
         document.getElementById('send-addmsg').value = data.addmsg;
+        saveScroll();
         sendForm.submit();
     });
 }
@@ -121,6 +136,7 @@ function deleteTask(id) {
     if (!confirm('Delete this task?')) return;
     var form = document.getElementById('delete-form');
     form.action = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
+    saveScroll();
     form.submit();
 }
 
@@ -140,6 +156,7 @@ function bulkSend() {
     if (!confirm('Send messages for ' + n + ' selected task(s)?')) return;
     var form = document.getElementById('bulk-form');
     form.action = "{{ url_for('bulk_send_tasks') }}";
+    saveScroll();
     form.submit();
 }
 
@@ -149,6 +166,7 @@ function bulkDelete() {
     if (!confirm('Delete ' + n + ' selected task(s)?')) return;
     var form = document.getElementById('bulk-form');
     form.action = "{{ url_for('bulk_delete_tasks') }}";
+    saveScroll();
     form.submit();
 }
 </script>
