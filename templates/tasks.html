@@ -1,7 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Tasks — WA Tracker{% endblock %}
 {% block content %}
-<h2>Tasks</h2>
+<h2>Tasks <span style="font-size:1rem;font-weight:400;color:#666">({{ tasks|length }} pending)</span></h2>
+
+<!-- Person filter tags -->
+<div id="person-tags" style="margin-bottom:0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
+    <span style="font-size:0.8rem;color:#888;margin-right:0.3rem">Filter:</span>
+    <button type="button" class="tag-btn active" onclick="filterByPerson(this, '')" data-person="">All</button>
+    {% set persons = [] %}
+    {% for t in tasks %}
+        {% if t.person and t.person not in persons %}
+            {% if persons.append(t.person) %}{% endif %}
+        {% endif %}
+    {% endfor %}
+    {% for name in persons|sort %}
+    <button type="button" class="tag-btn" onclick="filterByPerson(this, '{{ name }}')" data-person="{{ name }}">{{ name }} <span class="tag-count">{{ tasks|selectattr('person', 'equalto', name)|list|length }}</span></button>
+    {% endfor %}
+    {% set unassigned = tasks|rejectattr('person')|list|length %}
+    {% if unassigned > 0 %}
+    <button type="button" class="tag-btn" onclick="filterByPerson(this, '__unassigned__')" data-person="__unassigned__">Unassigned <span class="tag-count">{{ unassigned }}</span></button>
+    {% endif %}
+</div>
+
 <form method="POST" id="bulk-form">
 <div style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
     <button type="button" class="btn-send" onclick="bulkSend()" style="padding:0.4rem 1rem">Send Selected</button>
@@ -23,7 +43,7 @@
     </thead>
     <tbody>
     {% for t in tasks %}
-        <tr>
+        <tr data-person="{{ t.person }}">
             <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
             <td>{{ t.date }}</td>
             <td>
@@ -169,5 +189,32 @@ function bulkDelete() {
     saveScroll();
     form.submit();
 }
+
+function filterByPerson(btn, person) {
+    document.querySelectorAll('.tag-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var rows = document.querySelectorAll('table tbody tr[data-person]');
+    rows.forEach(function(row) {
+        if (!person) {
+            row.style.display = '';
+        } else if (person === '__unassigned__') {
+            row.style.display = row.getAttribute('data-person') === '' ? '' : 'none';
+        } else {
+            row.style.display = row.getAttribute('data-person') === person ? '' : 'none';
+        }
+    });
+}
 </script>
+
+<style>
+.tag-btn {
+    background: #e9ecef; color: #555; border: none; padding: 0.3rem 0.7rem;
+    border-radius: 20px; cursor: pointer; font-size: 0.8rem; font-weight: 500;
+    transition: all 0.15s;
+}
+.tag-btn:hover { background: #dee2e6; }
+.tag-btn.active { background: #128C7E; color: #fff; }
+.tag-count { background: rgba(0,0,0,0.15); border-radius: 10px; padding: 0 0.4rem; margin-left: 0.2rem; font-size: 0.75rem; }
+.tag-btn.active .tag-count { background: rgba(255,255,255,0.25); }
+</style>
 {% endblock %}
