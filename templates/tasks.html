@@ -16,7 +16,6 @@
             <th>Date</th>
             <th>Person / Phone</th>
             <th>Message</th>
-            <th>Status</th>
             <th>Additional Msg</th>
             <th>Actions</th>
             <th>Last Sent</th>
@@ -41,9 +40,6 @@
             </td>
             <td class="msg-cell">{{ t.message }}</td>
             <td>
-                <textarea id="status-{{ t.id }}" placeholder="Status" rows="2" style="width:100%;min-width:120px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.status }}</textarea>
-            </td>
-            <td>
                 <textarea id="addmsg-{{ t.id }}" placeholder="Add note..." rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.additional_message }}</textarea>
             </td>
             <td style="white-space:nowrap">
@@ -55,7 +51,7 @@
         </tr>
     {% endfor %}
     {% if not tasks %}
-        <tr><td colspan="8" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
+        <tr><td colspan="7" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
     {% endif %}
     </tbody>
 </table>
