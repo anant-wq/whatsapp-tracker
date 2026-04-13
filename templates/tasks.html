@@ -77,7 +77,7 @@ function getTaskData(id) {
     return {
         person: sel.value,
         phone: opt.getAttribute('data-phone') || '',
-        status: document.getElementById('status-' + id).value,
+        status: '',
         addmsg: document.getElementById('addmsg-' + id).value
     };
 }
