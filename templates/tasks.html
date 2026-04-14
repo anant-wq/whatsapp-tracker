@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Tasks — WA Tracker{% endblock %}
 {% block content %}
-<h2>Tasks <span style="font-size:1rem;font-weight:400;color:#666">({{ tasks|length }} pending)</span></h2>
+<h2 style="display:flex;align-items:center;gap:0.7rem">Tasks <span style="font-size:1rem;font-weight:400;color:#666">({{ tasks|length }} pending)</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:4px;padding:0.2rem 0.6rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635; Refresh</button></h2>
 
 <!-- Person filter tags -->
 <div id="person-tags" style="margin-bottom:0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
