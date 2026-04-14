@@ -113,6 +113,8 @@ def get_logs(limit=200):
 # ---- Tasks ----
 
 def add_task(date_str, message, phone="", person="", status=""):
+    if phone and "@" not in phone:
+        phone = _clean_phone(phone)
     conn = get_db()
     # Auto-resolve person from contacts if phone provided and no person given
     if phone and not person:
@@ -138,6 +140,8 @@ def get_tasks():
 
 
 def update_task(task_id, **kwargs):
+    if "phone" in kwargs and kwargs["phone"] and "@" not in kwargs["phone"]:
+        kwargs["phone"] = _clean_phone(kwargs["phone"])
     conn = get_db()
     allowed = {"person", "phone", "status", "additional_message", "last_sent"}
     sets = []
@@ -209,7 +213,14 @@ def get_group_name_by_jid(jid):
 
 # ---- Contacts ----
 
+def _clean_phone(phone):
+    """Strip invisible unicode and non-digit chars from phone numbers."""
+    import re
+    return re.sub(r"[^\d]", "", phone.strip())
+
+
 def add_contact(name, phone):
+    phone = _clean_phone(phone)
     conn = get_db()
     conn.execute(
         "INSERT OR REPLACE INTO contacts (name, phone) VALUES (?, ?)",
