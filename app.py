@@ -254,6 +254,9 @@ def update_task(task_id):
     status = request.form.get("status", "")
     additional = request.form.get("additional_message", "")
     models.update_task(task_id, person=person, phone=phone, status=status, additional_message=additional)
+    # Return JSON for fetch requests, redirect for form submissions
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"status": "ok"})
     flash("Task updated", "success")
     return redirect(url_for("tasks_page"))
 

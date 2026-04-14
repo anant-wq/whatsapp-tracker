@@ -133,23 +133,28 @@ function saveTask(id) {
 }
 
 function sendTask(id) {
-    // Save first, then send
+    // Save first, wait for it to complete, then send
     var data = getTaskData(id);
-    // First save the current state via fetch, then send
     var saveUrl = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
     var formData = new FormData();
     formData.append('person', data.person);
     formData.append('phone', data.phone);
     formData.append('status', data.status);
     formData.append('additional_message', data.addmsg);
-    fetch(saveUrl, { method: 'POST', body: formData, redirect: 'manual' }).then(function() {
-        // Now send
-        var sendForm = document.getElementById('send-form');
-        sendForm.action = "{{ url_for('send_reminder', task_id=0) }}".replace('/0', '/' + id);
-        document.getElementById('send-addmsg').value = data.addmsg;
-        saveScroll();
-        sendForm.submit();
-    });
+
+    fetch(saveUrl, { method: 'POST', body: formData, headers: {'X-Requested-With': 'fetch'} })
+        .then(function(resp) {
+            if (resp.ok) {
+                var sendForm = document.getElementById('send-form');
+                sendForm.action = "{{ url_for('send_reminder', task_id=0) }}".replace('/0', '/' + id);
+                document.getElementById('send-addmsg').value = data.addmsg;
+                saveScroll();
+                sendForm.submit();
+            } else {
+                alert('Save failed, please try again');
+            }
+        })
+        .catch(function() { alert('Save failed, please try again'); });
 }
 
 function deleteTask(id) {
