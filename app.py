@@ -579,11 +579,15 @@ def _send_whatsapp(to, text):
     if not WASENDER_API_KEY:
         models.log_event("SEND_ERROR", "No API key")
         return False
-    # Ensure proper JID format
+    # Clean phone number and ensure proper JID format
     to = to.strip()
     if "@" not in to:
+        # Strip any non-digit characters (unicode markers, spaces, etc.)
+        to = re.sub(r"[^\d]", "", to)
         to = to + "@s.whatsapp.net"
-    models.log_event("SEND_TO", f"to={to}")
+    else:
+        # For group JIDs, just strip unicode junk around the JID
+        to = re.sub(r"[^\x20-\x7E]", "", to).strip()
     try:
         resp = requests.post(
             f"{WASENDER_BASE}/api/send-message",
