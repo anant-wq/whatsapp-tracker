@@ -580,8 +580,10 @@ def _send_whatsapp(to, text):
         models.log_event("SEND_ERROR", "No API key")
         return False
     # Ensure proper JID format
+    to = to.strip()
     if "@" not in to:
         to = to + "@s.whatsapp.net"
+    models.log_event("SEND_TO", f"to={to}")
     try:
         resp = requests.post(
             f"{WASENDER_BASE}/api/send-message",
