@@ -47,15 +47,7 @@
             <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
             <td>{{ t.date }}</td>
             <td>
-                <select id="person-{{ t.id }}" onchange="personChanged({{ t.id }})" style="min-width:150px;margin-bottom:2px">
-                    <option value="" data-phone="">-- Select --</option>
-                    {% for p in people %}
-                    <option value="{{ p.name }}" data-phone="{{ p.phone }}" {% if t.person == p.name %}selected{% endif %}>{{ p.name }}</option>
-                    {% endfor %}
-                    {% if t.person and t.person not in people|map(attribute='name')|list %}
-                    <option value="{{ t.person }}" data-phone="{{ t.phone }}" selected>{{ t.person }}</option>
-                    {% endif %}
-                </select>
+                <input type="text" id="person-{{ t.id }}" list="people-list" value="{{ t.person }}" oninput="personChanged({{ t.id }})" onchange="personChanged({{ t.id }})" placeholder="Type name..." style="min-width:150px;margin-bottom:2px;padding:0.3rem 0.5rem;border:1px solid #ddd;border-radius:3px;font-size:0.85rem">
                 <br><span class="mono" style="font-size:0.8rem;color:#888" id="phone-display-{{ t.id }}">{{ t.phone }}</span>
             </td>
             <td class="msg-cell">{{ t.message }}</td>
@@ -77,6 +69,13 @@
 </table>
 </div>
 </form>
+
+<!-- Shared datalist for person autocomplete -->
+<datalist id="people-list">
+    {% for p in people %}
+    <option value="{{ p.name }}">{{ p.phone }}</option>
+    {% endfor %}
+</datalist>
 
 <!-- Hidden forms for actions -->
 <form method="POST" id="save-form" style="display:none">
@@ -104,12 +103,19 @@ function saveScroll() {
     sessionStorage.setItem('scrollPos', window.scrollY);
 }
 
+// Phone lookup map from people list
+var phoneMap = {
+    {% for p in people %}
+    {{ p.name|tojson }}: {{ p.phone|tojson }},
+    {% endfor %}
+};
+
 function getTaskData(id) {
-    var sel = document.getElementById('person-' + id);
-    var opt = sel.options[sel.selectedIndex];
+    var input = document.getElementById('person-' + id);
+    var name = input.value.trim();
     return {
-        person: sel.value,
-        phone: opt.getAttribute('data-phone') || '',
+        person: name,
+        phone: phoneMap[name] || '',
         status: '',
         addmsg: document.getElementById('addmsg-' + id).value
     };
