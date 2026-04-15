@@ -205,9 +205,21 @@ def index():
 @app.route("/tasks")
 @login_required
 def tasks_page():
-    tasks = models.get_tasks()
+    all_tasks = models.get_tasks()
+    my_name = session.get("user", {}).get("name", "")
+    tasks = [t for t in all_tasks if t["person"] != my_name]
     people = _get_people()
     return render_template("tasks.html", tasks=tasks, people=people)
+
+
+@app.route("/my-tasks")
+@login_required
+def my_tasks_page():
+    all_tasks = models.get_tasks()
+    my_name = session.get("user", {}).get("name", "")
+    tasks = [t for t in all_tasks if t["person"] == my_name]
+    people = _get_people()
+    return render_template("my_tasks.html", tasks=tasks, people=people, my_name=my_name)
 
 
 @app.route("/tasks/send/<int:task_id>", methods=["POST"])

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}My Tasks — WA Tracker{% endblock %}
+{% block content %}
+<h2 style="display:flex;align-items:center;gap:0.7rem">My Tasks <span style="font-size:1rem;font-weight:400;color:#666">({{ tasks|length }})</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:4px;padding:0.2rem 0.6rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635; Refresh</button></h2>
+
+<form method="POST" id="bulk-form">
+<div style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
+    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem">Delete Selected</button>
+    <label style="margin-left:1rem;font-size:0.85rem;color:#666"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
+</div>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th style="width:30px"></th>
+            <th>Date</th>
+            <th>Message</th>
+            <th>Notes</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for t in tasks %}
+        <tr>
+            <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
+            <td>{{ t.date }}</td>
+            <td class="msg-cell">{{ t.message }}</td>
+            <td>
+                <textarea id="addmsg-{{ t.id }}" placeholder="Add note..." rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.additional_message }}</textarea>
+            </td>
+            <td style="white-space:nowrap">
+                <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
+                <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
+            </td>
+        </tr>
+    {% endfor %}
+    {% if not tasks %}
+        <tr><td colspan="5" class="empty">No tasks assigned to you.</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+</form>
+
+<!-- Hidden forms for actions -->
+<form method="POST" id="save-form" style="display:none">
+    <input type="hidden" name="person" id="save-person">
+    <input type="hidden" name="phone" id="save-phone">
+    <input type="hidden" name="status" id="save-status">
+    <input type="hidden" name="additional_message" id="save-addmsg">
+</form>
+<form method="POST" id="delete-form" style="display:none"></form>
+
+<script>
+(function() {
+    var pos = sessionStorage.getItem('scrollPos');
+    if (pos) {
+        sessionStorage.removeItem('scrollPos');
+        window.scrollTo(0, parseInt(pos));
+    }
+})();
+
+function saveScroll() {
+    sessionStorage.setItem('scrollPos', window.scrollY);
+}
+
+function saveTask(id) {
+    var form = document.getElementById('save-form');
+    form.action = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
+    document.getElementById('save-person').value = {{ my_name|tojson }};
+    document.getElementById('save-phone').value = '';
+    document.getElementById('save-status').value = '';
+    document.getElementById('save-addmsg').value = document.getElementById('addmsg-' + id).value;
+    saveScroll();
+    form.submit();
+}
+
+function deleteTask(id) {
+    if (!confirm('Delete this task?')) return;
+    var form = document.getElementById('delete-form');
+    form.action = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
+    saveScroll();
+    form.submit();
+}
+
+function toggleAll(master) {
+    document.querySelectorAll('input[name="task_ids"]').forEach(function(cb) {
+        cb.checked = master.checked;
+    });
+}
+
+function bulkDelete() {
+    var n = document.querySelectorAll('input[name="task_ids"]:checked').length;
+    if (n === 0) { alert('No tasks selected'); return; }
+    if (!confirm('Delete ' + n + ' selected task(s)?')) return;
+    var form = document.getElementById('bulk-form');
+    form.action = "{{ url_for('bulk_delete_tasks') }}";
+    saveScroll();
+    form.submit();
+}
+</script>
+{% endblock %}
