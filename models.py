@@ -117,7 +117,9 @@ def add_task(date_str, message, phone="", person="", status=""):
         phone = _clean_phone(phone)
     conn = get_db()
     # Auto-resolve person from contacts if phone provided and no person given
-    if phone and not person:
+    # Skip for own phone number (tasks from self should stay unassigned)
+    my_phone = os.environ.get("MY_PHONE", "")
+    if phone and not person and not (my_phone and (my_phone in phone or phone in my_phone)):
         row = conn.execute(
             "SELECT name FROM contacts WHERE phone = ?", (phone,)
         ).fetchone()
