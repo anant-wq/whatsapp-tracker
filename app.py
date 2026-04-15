@@ -152,7 +152,7 @@ def webhook_post():
                 group_name = models.get_group_name_by_jid(chat_jid)
                 models.add_task(
                     date_str=date_str, message=body, phone=chat_jid,
-                    status=f"#todo | {group_name}"
+                    person=group_name
                 )
                 return jsonify({"status": "ok", "message": "group todo added"})
 
