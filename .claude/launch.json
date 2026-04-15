@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "board-planner",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/anant/Desktop/Claude_AI/vultr/board-planner/app.py"],
+      "port": 5008,
+      "env": {
+        "APP_PREFIX": "",
+        "SKIP_AUTH": "1",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      }
+    }
+  ]
+}
