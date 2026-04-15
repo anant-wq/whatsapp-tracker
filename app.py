@@ -34,6 +34,7 @@ class PrefixMiddleware:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.permanent_session_lifetime = timedelta(days=30)
 app.wsgi_app = PrefixMiddleware(app.wsgi_app, prefix=os.environ.get("APP_PREFIX", "/whatsapp"))
 
 WASENDER_BASE = "https://api.wasenderapi.com"
@@ -87,6 +88,7 @@ def auth_callback():
         flash(f"Access denied for {email}. Only {ALLOWED_EMAIL} is allowed.", "error")
         return redirect(url_for("login"))
 
+    session.permanent = True
     session["user"] = {"email": email, "name": user_info.get("name", email)}
     return redirect(url_for("tasks_page"))
 
