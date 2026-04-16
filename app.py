@@ -745,7 +745,7 @@ def _auto_generate_summaries():
     for g in groups:
         name = g["group_name"]
         jid = g["group_jid"]
-        if "dispatch" in name.lower():
+        if "dispatch" in name.lower() or "daily report" in name.lower():
             summary = _generate_summary(jid, hours=2)
             if summary:
                 _send_whatsapp(MY_PHONE + "@s.whatsapp.net", f"*Summary (last 2h) — {name}*\n\n{summary}")
