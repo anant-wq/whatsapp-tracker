@@ -145,7 +145,7 @@ def update_task(task_id, **kwargs):
     if "phone" in kwargs and kwargs["phone"] and "@" not in kwargs["phone"]:
         kwargs["phone"] = _clean_phone(kwargs["phone"])
     conn = get_db()
-    allowed = {"person", "phone", "status", "additional_message", "last_sent"}
+    allowed = {"person", "phone", "status", "message", "additional_message", "last_sent"}
     sets = []
     vals = []
     for k, v in kwargs.items():

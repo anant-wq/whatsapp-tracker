@@ -266,8 +266,12 @@ def update_task(task_id):
     person = request.form.get("person", "")
     phone = request.form.get("phone", "")
     status = request.form.get("status", "")
+    message = request.form.get("message", "")
     additional = request.form.get("additional_message", "")
-    models.update_task(task_id, person=person, phone=phone, status=status, additional_message=additional)
+    updates = dict(person=person, phone=phone, status=status, additional_message=additional)
+    if message:
+        updates["message"] = message
+    models.update_task(task_id, **updates)
     # Return JSON for fetch requests, redirect for form submissions
     if request.headers.get("X-Requested-With") == "fetch":
         return jsonify({"status": "ok"})

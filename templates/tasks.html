@@ -29,28 +29,31 @@
     <label style="margin-left:1rem;font-size:0.85rem;color:#666"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
 </div>
 <div class="table-wrap">
-<table>
+<table id="tasks-table">
     <thead>
         <tr>
             <th style="width:30px"></th>
-            <th>Date</th>
-            <th>Person / Phone</th>
+            <th class="sortable" data-col="0">Date <span class="sort-icon"></span></th>
+            <th class="sortable" data-col="1">Person <span class="sort-icon"></span></th>
             <th>Message</th>
             <th>Additional Msg</th>
             <th>Actions</th>
-            <th>Last Sent</th>
+            <th class="sortable" data-col="5">Last Sent <span class="sort-icon"></span></th>
+            <th class="sortable" data-col="6">Days Ago <span class="sort-icon"></span></th>
         </tr>
     </thead>
     <tbody>
     {% for t in tasks %}
-        <tr data-person="{{ t.person }}">
+        <tr data-person="{{ t.person }}" data-date="{{ t.date }}" data-lastsent="{{ t.last_sent }}">
             <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
             <td>{{ t.date }}</td>
             <td>
                 <input type="text" id="person-{{ t.id }}" list="people-list" value="{{ t.person }}" oninput="personChanged({{ t.id }})" onchange="personChanged({{ t.id }})" placeholder="Type name..." style="min-width:150px;margin-bottom:2px;padding:0.3rem 0.5rem;border:1px solid #ddd;border-radius:3px;font-size:0.85rem">
                 <br><span class="mono" style="font-size:0.8rem;color:#888" id="phone-display-{{ t.id }}">{{ t.phone }}</span>
             </td>
-            <td class="msg-cell">{{ t.message }}</td>
+            <td class="msg-cell">
+                <textarea id="msg-{{ t.id }}" rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.message }}</textarea>
+            </td>
             <td>
                 <textarea id="addmsg-{{ t.id }}" placeholder="Add note..." rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.additional_message }}</textarea>
             </td>
@@ -60,10 +63,11 @@
                 <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
             </td>
             <td class="status-cell" id="lastsent-{{ t.id }}">{{ t.last_sent }}</td>
+            <td class="days-ago-cell"></td>
         </tr>
     {% endfor %}
     {% if not tasks %}
-        <tr><td colspan="7" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
+        <tr><td colspan="8" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
     {% endif %}
     </tbody>
 </table>
@@ -82,6 +86,7 @@
     <input type="hidden" name="person" id="save-person">
     <input type="hidden" name="phone" id="save-phone">
     <input type="hidden" name="status" id="save-status">
+    <input type="hidden" name="message" id="save-message">
     <input type="hidden" name="additional_message" id="save-addmsg">
 </form>
 <form method="POST" id="send-form" style="display:none">
@@ -117,6 +122,7 @@ function getTaskData(id) {
         person: name,
         phone: phoneMap[name] || '',
         status: '',
+        message: document.getElementById('msg-' + id).value,
         addmsg: document.getElementById('addmsg-' + id).value
     };
 }
@@ -133,6 +139,7 @@ function saveTask(id) {
     document.getElementById('save-person').value = data.person;
     document.getElementById('save-phone').value = data.phone;
     document.getElementById('save-status').value = data.status;
+    document.getElementById('save-message').value = data.message;
     document.getElementById('save-addmsg').value = data.addmsg;
     saveScroll();
     form.submit();
@@ -146,6 +153,7 @@ function sendTask(id) {
     formData.append('person', data.person);
     formData.append('phone', data.phone);
     formData.append('status', data.status);
+    formData.append('message', data.message);
     formData.append('additional_message', data.addmsg);
 
     fetch(saveUrl, { method: 'POST', body: formData, headers: {'X-Requested-With': 'fetch'} })
@@ -201,6 +209,69 @@ function bulkDelete() {
     form.submit();
 }
 
+// Calculate days ago for each row
+(function() {
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    document.querySelectorAll('#tasks-table tbody tr[data-lastsent]').forEach(function(row) {
+        var ls = row.getAttribute('data-lastsent');
+        var cell = row.querySelector('.days-ago-cell');
+        if (!ls || !cell) return;
+        // Extract date from "Sent 2026-04-14 12:53" or "Failed 2026-04-14 09:56"
+        var match = ls.match(/(\d{4}-\d{2}-\d{2})/);
+        if (match) {
+            var sent = new Date(match[1] + 'T00:00:00');
+            var diff = Math.floor((today - sent) / 86400000);
+            if (diff === 0) cell.textContent = 'Today';
+            else if (diff === 1) cell.textContent = '1 day';
+            else cell.textContent = diff + ' days';
+            cell.setAttribute('data-days', diff);
+        } else {
+            cell.textContent = '—';
+            cell.setAttribute('data-days', '9999');
+        }
+    });
+})();
+
+// Sorting
+var sortState = {};
+document.querySelectorAll('.sortable').forEach(function(th) {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', function() {
+        var col = parseInt(th.getAttribute('data-col'));
+        var asc = sortState[col] !== 'asc';
+        sortState = {};
+        sortState[col] = asc ? 'asc' : 'desc';
+        // Update icons
+        document.querySelectorAll('.sort-icon').forEach(function(s) { s.textContent = ''; });
+        th.querySelector('.sort-icon').textContent = asc ? ' \u25B2' : ' \u25BC';
+
+        var tbody = document.querySelector('#tasks-table tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr[data-person]'));
+        rows.sort(function(a, b) {
+            var va, vb;
+            if (col === 0) { // Date
+                va = a.getAttribute('data-date') || '';
+                vb = b.getAttribute('data-date') || '';
+            } else if (col === 1) { // Person
+                va = (a.getAttribute('data-person') || '').toLowerCase();
+                vb = (b.getAttribute('data-person') || '').toLowerCase();
+            } else if (col === 5) { // Last Sent
+                va = a.getAttribute('data-lastsent') || '';
+                vb = b.getAttribute('data-lastsent') || '';
+            } else if (col === 6) { // Days Ago
+                va = parseInt(a.querySelector('.days-ago-cell').getAttribute('data-days')) || 9999;
+                vb = parseInt(b.querySelector('.days-ago-cell').getAttribute('data-days')) || 9999;
+                return asc ? va - vb : vb - va;
+            }
+            if (va < vb) return asc ? -1 : 1;
+            if (va > vb) return asc ? 1 : -1;
+            return 0;
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+    });
+});
+
 function filterByPerson(btn, person) {
     document.querySelectorAll('.tag-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
@@ -227,5 +298,9 @@ function filterByPerson(btn, person) {
 .tag-btn.active { background: #128C7E; color: #fff; }
 .tag-count { background: rgba(0,0,0,0.15); border-radius: 10px; padding: 0 0.4rem; margin-left: 0.2rem; font-size: 0.75rem; }
 .tag-btn.active .tag-count { background: rgba(255,255,255,0.25); }
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { background: rgba(255,255,255,0.15); }
+.sort-icon { font-size: 0.7rem; }
+.days-ago-cell { white-space: nowrap; font-size: 0.85rem; color: #555; font-weight: 600; }
 </style>
 {% endblock %}
