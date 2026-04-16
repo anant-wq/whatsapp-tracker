@@ -740,13 +740,15 @@ If messages are in Hindi/Hinglish, still summarize in English.
 
 
 def _auto_generate_summaries():
-    """Scheduled job: generate hourly summaries for groups matching 'Dispatch'."""
+    """Scheduled job: generate hourly summaries for groups matching 'Dispatch' and send to the group."""
     groups = models.get_groups()
     for g in groups:
         name = g["group_name"] if isinstance(g, dict) else g[1]
         jid = g["group_jid"] if isinstance(g, dict) else g[0]
         if "dispatch" in name.lower():
-            _generate_summary(jid, hours=1)
+            summary = _generate_summary(jid, hours=1)
+            if summary:
+                _send_whatsapp(jid, f"*Hourly Summary — {name}*\n\n{summary}")
 
 
 # ---- Scheduler (gunicorn runs multiple workers; use a file lock to start only once) ----
