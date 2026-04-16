@@ -743,8 +743,8 @@ def _auto_generate_summaries():
     """Scheduled job: generate hourly summaries for groups matching 'Dispatch' and send to the group."""
     groups = models.get_groups()
     for g in groups:
-        name = g["group_name"] if isinstance(g, dict) else g[1]
-        jid = g["group_jid"] if isinstance(g, dict) else g[0]
+        name = g["group_name"]
+        jid = g["group_jid"]
         if "dispatch" in name.lower():
             summary = _generate_summary(jid, hours=1)
             if summary:
