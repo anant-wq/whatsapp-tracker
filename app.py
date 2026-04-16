@@ -41,6 +41,7 @@ WASENDER_BASE = "https://api.wasenderapi.com"
 WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
 MY_PHONE = os.environ.get("MY_PHONE", "918447731703")
 ALLOWED_EMAIL = os.environ.get("ALLOWED_EMAIL", "anant@xpertpack.in")
+MY_NAME = os.environ.get("MY_NAME", "Anant Khirbat")
 
 # ---- OAuth ----
 
@@ -54,9 +55,16 @@ google = oauth.register(
 )
 
 
+@app.before_request
+def make_session_permanent():
+    session.permanent = True
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if os.environ.get("SKIP_AUTH"):
+            session["user"] = {"email": ALLOWED_EMAIL, "name": MY_NAME}
         if not session.get("user"):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
@@ -145,17 +153,51 @@ def webhook_post():
         models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group}")
 
         body_lower = body.lower()
-        if is_group and body and ("#todo" in body_lower or "#task" in body_lower):
+        # Extract person hashtags (any #name that isn't #todo/#task)
+        person_tags = [
+            tag for tag in re.findall(r"#(\w+)", body_lower)
+            if tag not in ("todo", "task")
+        ]
+        has_todo = "#todo" in body_lower or "#task" in body_lower
+
+        # Group messages with #todo/#task
+        if is_group and body and has_todo:
             is_my_phone = (MY_PHONE in sender_phone or sender_phone in MY_PHONE)
             if is_my_phone:
                 ts = data.get("timestamp") or msgs.get("messageTimestamp")
                 date_str = _parse_timestamp(ts)
                 group_name = models.get_group_name_by_jid(chat_jid)
-                models.add_task(
-                    date_str=date_str, message=body, phone=chat_jid,
-                    person=group_name
-                )
-                return jsonify({"status": "ok", "message": "group todo added"})
+                if person_tags:
+                    for tag in person_tags:
+                        models.add_task(
+                            date_str=date_str, message=body, phone=chat_jid,
+                            person=MY_NAME, tag=tag.capitalize()
+                        )
+                    return jsonify({"status": "ok", "message": f"my task added tagged {', '.join(person_tags)}"})
+                else:
+                    models.add_task(
+                        date_str=date_str, message=body, phone=chat_jid,
+                        person=group_name
+                    )
+                    return jsonify({"status": "ok", "message": "group todo added"})
+
+        # Direct messages sent BY me — check for person hashtags or #todo
+        if from_me and not is_group and body:
+            if person_tags or has_todo:
+                ts = data.get("timestamp") or msgs.get("messageTimestamp")
+                date_str = _parse_timestamp(ts)
+                if person_tags:
+                    for tag in person_tags:
+                        models.add_task(
+                            date_str=date_str, message=body, phone="",
+                            person=MY_NAME, tag=tag.capitalize()
+                        )
+                    return jsonify({"status": "ok", "message": f"my task added tagged {', '.join(person_tags)}"})
+                else:
+                    models.add_task(date_str=date_str, message=body, phone="",
+                                    person=MY_NAME)
+                    return jsonify({"status": "ok", "message": "my task added"})
+            return jsonify({"status": "ok", "message": "skipped - fromMe, no tags"})
 
         if from_me:
             return jsonify({"status": "ok", "message": "skipped - fromMe"})
@@ -168,6 +210,13 @@ def webhook_post():
 
         ts = data.get("timestamp") or msgs.get("messageTimestamp")
         date_str = _parse_timestamp(ts)
+        if person_tags:
+            for tag in person_tags:
+                models.add_task(
+                    date_str=date_str, message=body, phone=sender_phone,
+                    person=MY_NAME, tag=tag.capitalize()
+                )
+            return jsonify({"status": "ok", "message": f"my task added tagged {', '.join(person_tags)}"})
         models.add_task(date_str=date_str, message=body, phone=sender_phone)
         return jsonify({"status": "ok", "message": "task added"})
 
@@ -219,8 +268,20 @@ def my_tasks_page():
     all_tasks = models.get_tasks()
     my_name = session.get("user", {}).get("name", "")
     tasks = [t for t in all_tasks if t["person"] == my_name]
+    # Group tagged tasks by tag for subheadings
+    tagged = {}
+    untagged = []
+    for t in tasks:
+        tag = t["tag"] if "tag" in t.keys() else ""
+        if tag:
+            tagged.setdefault(tag, []).append(t)
+        else:
+            untagged.append(t)
+    # Sort tag groups alphabetically
+    tagged = dict(sorted(tagged.items()))
     people = _get_people()
-    return render_template("my_tasks.html", tasks=tasks, people=people, my_name=my_name)
+    return render_template("my_tasks.html", tasks=untagged, tagged_tasks=tagged,
+                           people=people, my_name=my_name)
 
 
 @app.route("/tasks/send/<int:task_id>", methods=["POST"])
@@ -252,11 +313,14 @@ def send_reminder(task_id):
 
     success = _send_whatsapp(phone, full_message)
     now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
+    last_sent = f"Sent {now}" if success else f"Failed {now}"
     models.update_task(
         task_id,
-        last_sent=f"Sent {now}" if success else f"Failed {now}",
+        last_sent=last_sent,
         additional_message=additional
     )
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"status": "ok" if success else "error", "last_sent": last_sent})
     flash("Message sent!" if success else "Send failed", "success" if success else "error")
     return redirect(url_for("tasks_page"))
 
@@ -284,6 +348,8 @@ def update_task(task_id):
 @login_required
 def delete_task(task_id):
     models.delete_task(task_id)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"status": "ok"})
     flash("Task deleted", "success")
     return redirect(url_for("tasks_page"))
 
