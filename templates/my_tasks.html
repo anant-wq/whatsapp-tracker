@@ -1,86 +1,149 @@
 {% extends "base.html" %}
 {% block title %}My Tasks — WA Tracker{% endblock %}
 {% block content %}
-<h2 style="display:flex;align-items:center;gap:0.7rem">My Tasks <span style="font-size:1rem;font-weight:400;color:#666">({{ tasks|length }})</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:4px;padding:0.2rem 0.6rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635; Refresh</button></h2>
+{% set total = tasks|length + tagged_tasks.values()|map('length')|sum %}
+<h2>My Tasks <span class="count">({{ total }})</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:6px;padding:0.25rem 0.7rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635;</button></h2>
 
 <form method="POST" id="bulk-form">
-<div style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
-    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem">Delete Selected</button>
-    <label style="margin-left:1rem;font-size:0.85rem;color:#666"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
+<div class="toolbar">
+    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem;border-radius:6px">Delete Selected</button>
+    <label style="font-size:0.85rem;color:#666;cursor:pointer"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
 </div>
+
+{% if tagged_tasks %}
+{% for tag_name, tag_tasks in tagged_tasks.items() %}
+<h3 class="tag-header">#{{ tag_name }} <span class="tag-count">({{ tag_tasks|length }})</span></h3>
 <div class="table-wrap">
 <table>
     <thead>
         <tr>
-            <th style="width:30px"></th>
-            <th>Date</th>
+            <th class="check-cell"></th>
+            <th style="width:90px">Date</th>
             <th>Message</th>
-            <th>Notes</th>
-            <th>Actions</th>
+            <th style="width:250px">Notes</th>
+            <th style="width:100px">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for t in tag_tasks %}
+        <tr>
+            <td class="check-cell"><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
+            <td class="date-cell">{{ t.date }}</td>
+            <td class="msg-cell">{{ t.message }}</td>
+            <td>
+                <textarea id="addmsg-{{ t.id }}" class="notes-input" placeholder="Add note..." rows="2">{{ t.additional_message }}</textarea>
+            </td>
+            <td>
+                <div class="btn-actions">
+                    <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
+                    <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
+                </div>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if tasks %}
+<h3 class="section-header">General <span class="tag-count">({{ tasks|length }})</span></h3>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th class="check-cell"></th>
+            <th style="width:90px">Date</th>
+            <th>Message</th>
+            <th style="width:250px">Notes</th>
+            <th style="width:100px">Actions</th>
         </tr>
     </thead>
     <tbody>
     {% for t in tasks %}
         <tr>
-            <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
-            <td>{{ t.date }}</td>
+            <td class="check-cell"><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
+            <td class="date-cell">{{ t.date }}</td>
             <td class="msg-cell">{{ t.message }}</td>
             <td>
-                <textarea id="addmsg-{{ t.id }}" placeholder="Add note..." rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.additional_message }}</textarea>
+                <textarea id="addmsg-{{ t.id }}" class="notes-input" placeholder="Add note..." rows="2">{{ t.additional_message }}</textarea>
             </td>
-            <td style="white-space:nowrap">
-                <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
-                <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
+            <td>
+                <div class="btn-actions">
+                    <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
+                    <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
+                </div>
             </td>
         </tr>
     {% endfor %}
-    {% if not tasks %}
-        <tr><td colspan="5" class="empty">No tasks assigned to you.</td></tr>
-    {% endif %}
     </tbody>
 </table>
 </div>
-</form>
+{% endif %}
 
-<!-- Hidden forms for actions -->
-<form method="POST" id="save-form" style="display:none">
-    <input type="hidden" name="person" id="save-person">
-    <input type="hidden" name="phone" id="save-phone">
-    <input type="hidden" name="status" id="save-status">
-    <input type="hidden" name="additional_message" id="save-addmsg">
+{% if not tasks and not tagged_tasks %}
+<div class="table-wrap">
+<table><tbody>
+    <tr><td colspan="5" class="empty">No tasks assigned to you.</td></tr>
+</tbody></table>
+</div>
+{% endif %}
+
 </form>
-<form method="POST" id="delete-form" style="display:none"></form>
 
 <script>
-(function() {
-    var pos = sessionStorage.getItem('scrollPos');
-    if (pos) {
-        sessionStorage.removeItem('scrollPos');
-        window.scrollTo(0, parseInt(pos));
-    }
-})();
+function postData(url, data) {
+    var formData = new FormData();
+    for (var k in data) formData.append(k, data[k]);
+    return fetch(url, { method: 'POST', body: formData, headers: {'X-Requested-With': 'fetch'} });
+}
 
-function saveScroll() {
-    sessionStorage.setItem('scrollPos', window.scrollY);
+function flashEl(el, color) {
+    el.style.transition = 'background 0.3s';
+    el.style.background = color;
+    setTimeout(function() { el.style.background = ''; }, 1500);
 }
 
 function saveTask(id) {
-    var form = document.getElementById('save-form');
-    form.action = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
-    document.getElementById('save-person').value = {{ my_name|tojson }};
-    document.getElementById('save-phone').value = '';
-    document.getElementById('save-status').value = '';
-    document.getElementById('save-addmsg').value = document.getElementById('addmsg-' + id).value;
-    saveScroll();
-    form.submit();
+    var url = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
+    var btn = event.target;
+    btn.textContent = '...';
+    postData(url, {
+        person: {{ my_name|tojson }}, phone: '', status: '',
+        additional_message: document.getElementById('addmsg-' + id).value
+    }).then(function(resp) {
+        btn.textContent = resp.ok ? 'Saved!' : 'Error';
+        var tr = btn.closest('tr');
+        if (tr) flashEl(tr, resp.ok ? '#d4edda' : '#f8d7da');
+        setTimeout(function() { btn.textContent = 'Save'; }, 1500);
+    }).catch(function() {
+        btn.textContent = 'Error';
+        setTimeout(function() { btn.textContent = 'Save'; }, 1500);
+    });
 }
 
 function deleteTask(id) {
     if (!confirm('Delete this task?')) return;
-    var form = document.getElementById('delete-form');
-    form.action = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
-    saveScroll();
-    form.submit();
+    var url = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
+    var row = btn_row(id);
+    if (row) { row.style.transition = 'opacity 0.3s'; row.style.opacity = '0.3'; }
+    postData(url, {}).then(function(resp) {
+        if (resp.ok && row) {
+            row.innerHTML = '';
+            row.style.transition = 'height 0.3s';
+            row.style.height = '0';
+            row.style.overflow = 'hidden';
+            setTimeout(function() { row.remove(); }, 300);
+        } else if (row) {
+            row.style.opacity = '1';
+        }
+    }).catch(function() { if (row) row.style.opacity = '1'; });
+}
+
+function btn_row(id) {
+    var cb = document.querySelector('input[name="task_ids"][value="' + id + '"]');
+    return cb ? cb.closest('tr') : null;
 }
 
 function toggleAll(master) {
@@ -95,7 +158,6 @@ function bulkDelete() {
     if (!confirm('Delete ' + n + ' selected task(s)?')) return;
     var form = document.getElementById('bulk-form');
     form.action = "{{ url_for('bulk_delete_tasks') }}";
-    saveScroll();
     form.submit();
 }
 </script>

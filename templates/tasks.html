@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Tasks — WA Tracker{% endblock %}
 {% block content %}
-<h2 style="display:flex;align-items:center;gap:0.7rem">Tasks <span style="font-size:1rem;font-weight:400;color:#666">({{ tasks|length }} pending)</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:4px;padding:0.2rem 0.6rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635; Refresh</button></h2>
+<h2>Tasks <span class="count">({{ tasks|length }} pending)</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:6px;padding:0.25rem 0.7rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635;</button></h2>
 
 <!-- Person filter tags -->
 <div id="person-tags" style="margin-bottom:0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
@@ -23,51 +23,58 @@
 </div>
 
 <form method="POST" id="bulk-form">
-<div style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">
-    <button type="button" class="btn-send" onclick="bulkSend()" style="padding:0.4rem 1rem">Send Selected</button>
-    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem">Delete Selected</button>
-    <label style="margin-left:1rem;font-size:0.85rem;color:#666"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
+<div class="toolbar">
+    <button type="button" class="btn-send" onclick="bulkSend()" style="padding:0.4rem 1rem;border-radius:6px">Send Selected</button>
+    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem;border-radius:6px">Delete Selected</button>
+    <label style="font-size:0.85rem;color:#666;cursor:pointer"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
 </div>
 <div class="table-wrap">
 <table id="tasks-table">
     <thead>
         <tr>
-            <th style="width:30px"></th>
-            <th class="sortable" data-col="0">Date <span class="sort-icon"></span></th>
-            <th class="sortable" data-col="1">Person <span class="sort-icon"></span></th>
+            <th class="check-cell"></th>
+            <th class="sortable" data-col="0" style="width:90px">Date</th>
+            <th class="sortable" data-col="1" style="width:160px">Person</th>
             <th>Message</th>
-            <th>Additional Msg</th>
-            <th>Actions</th>
-            <th class="sortable" data-col="5">Last Sent <span class="sort-icon"></span></th>
-            <th class="sortable" data-col="6">Days Ago <span class="sort-icon"></span></th>
+            <th style="width:250px">Additional Msg</th>
+            <th style="width:60px">Sent</th>
+            <th style="width:130px">Actions</th>
         </tr>
     </thead>
     <tbody>
     {% for t in tasks %}
         <tr data-person="{{ t.person }}" data-date="{{ t.date }}" data-lastsent="{{ t.last_sent }}">
-            <td><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
-            <td>{{ t.date }}</td>
+            <td class="check-cell"><input type="checkbox" name="task_ids" value="{{ t.id }}" form="bulk-form"></td>
+            <td class="date-cell">{{ t.date }}</td>
             <td>
-                <input type="text" id="person-{{ t.id }}" list="people-list" value="{{ t.person }}" oninput="personChanged({{ t.id }})" onchange="personChanged({{ t.id }})" placeholder="Type name..." style="min-width:150px;margin-bottom:2px;padding:0.3rem 0.5rem;border:1px solid #ddd;border-radius:3px;font-size:0.85rem">
-                <br><span class="mono" style="font-size:0.8rem;color:#888" id="phone-display-{{ t.id }}">{{ t.phone }}</span>
+                <input type="text" id="person-{{ t.id }}" list="people-list" value="{{ t.person }}" oninput="personChanged({{ t.id }})" onchange="personChanged({{ t.id }})" placeholder="Type name..." class="person-input">
+                <span class="mono" style="font-size:0.75rem;color:#aaa;display:block;margin-top:2px" id="phone-display-{{ t.id }}">{{ t.phone }}</span>
             </td>
             <td class="msg-cell">
-                <textarea id="msg-{{ t.id }}" rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.message }}</textarea>
+                <textarea id="msg-{{ t.id }}" rows="3" class="notes-input" style="min-height:70px">{{ t.message }}</textarea>
             </td>
             <td>
-                <textarea id="addmsg-{{ t.id }}" placeholder="Add note..." rows="2" style="width:100%;min-width:200px;font-size:0.9rem;padding:0.4rem;border:1px solid #ddd;border-radius:3px;resize:vertical">{{ t.additional_message }}</textarea>
+                <div style="display:flex;align-items:flex-start;gap:6px">
+                    <textarea id="addmsg-{{ t.id }}" placeholder="Add note..." rows="3" class="notes-input" style="min-height:70px;flex:1">{{ t.additional_message }}</textarea>
+                    {% if t.last_sent and 'Sent' in t.last_sent %}
+                    <span class="send-status sent" title="{{ t.last_sent }}">&#10003;</span>
+                    {% elif t.last_sent and 'Failed' in t.last_sent %}
+                    <span class="send-status failed" title="{{ t.last_sent }}">&#10007;</span>
+                    {% endif %}
+                </div>
             </td>
-            <td style="white-space:nowrap">
-                <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
-                <button class="btn-send" onclick="sendTask({{ t.id }})" type="button">Send</button>
-                <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
-            </td>
-            <td class="status-cell" id="lastsent-{{ t.id }}">{{ t.last_sent }}</td>
             <td class="days-ago-cell"></td>
+            <td>
+                <div class="btn-actions" style="flex-wrap:wrap">
+                    <button class="btn-sm" onclick="saveTask({{ t.id }})" type="button">Save</button>
+                    <button class="btn-send" onclick="sendTask({{ t.id }})" type="button">Send</button>
+                    <button class="btn-del" onclick="deleteTask({{ t.id }})" type="button">Del</button>
+                </div>
+            </td>
         </tr>
     {% endfor %}
     {% if not tasks %}
-        <tr><td colspan="8" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
+        <tr><td colspan="7" class="empty">No tasks yet. They'll appear when messages come in via webhook.</td></tr>
     {% endif %}
     </tbody>
 </table>
@@ -81,34 +88,10 @@
     {% endfor %}
 </datalist>
 
-<!-- Hidden forms for actions -->
-<form method="POST" id="save-form" style="display:none">
-    <input type="hidden" name="person" id="save-person">
-    <input type="hidden" name="phone" id="save-phone">
-    <input type="hidden" name="status" id="save-status">
-    <input type="hidden" name="message" id="save-message">
-    <input type="hidden" name="additional_message" id="save-addmsg">
-</form>
-<form method="POST" id="send-form" style="display:none">
-    <input type="hidden" name="additional_message" id="send-addmsg">
-</form>
-<form method="POST" id="delete-form" style="display:none"></form>
+<!-- Hidden form for bulk operations (these still do full reload) -->
+<form method="POST" id="bulk-action-form" style="display:none"></form>
 
 <script>
-// Restore scroll position after redirect
-(function() {
-    var pos = sessionStorage.getItem('scrollPos');
-    if (pos) {
-        sessionStorage.removeItem('scrollPos');
-        window.scrollTo(0, parseInt(pos));
-    }
-})();
-
-function saveScroll() {
-    sessionStorage.setItem('scrollPos', window.scrollY);
-}
-
-// Phone lookup map from people list
 var phoneMap = {
     {% for p in people %}
     {{ p.name|tojson }}: {{ p.phone|tojson }},
@@ -132,51 +115,105 @@ function personChanged(id) {
     document.getElementById('phone-display-' + id).textContent = data.phone;
 }
 
+function flashRow(id, color) {
+    var row = document.querySelector('tr[data-person] input[value="' + id + '"]');
+    if (row) {
+        var tr = row.closest('tr');
+        tr.style.transition = 'background 0.3s';
+        tr.style.background = color;
+        setTimeout(function() { tr.style.background = ''; }, 1500);
+    }
+}
+
+function postData(url, data) {
+    var formData = new FormData();
+    for (var k in data) formData.append(k, data[k]);
+    return fetch(url, { method: 'POST', body: formData, headers: {'X-Requested-With': 'fetch'} });
+}
+
 function saveTask(id) {
     var data = getTaskData(id);
-    var form = document.getElementById('save-form');
-    form.action = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
-    document.getElementById('save-person').value = data.person;
-    document.getElementById('save-phone').value = data.phone;
-    document.getElementById('save-status').value = data.status;
-    document.getElementById('save-message').value = data.message;
-    document.getElementById('save-addmsg').value = data.addmsg;
-    saveScroll();
-    form.submit();
+    var url = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
+    var btn = event.target;
+    btn.textContent = '...';
+    postData(url, {
+        person: data.person, phone: data.phone, status: data.status,
+        message: data.message, additional_message: data.addmsg
+    }).then(function(resp) {
+        btn.textContent = resp.ok ? 'Saved!' : 'Error';
+        flashRow(id, resp.ok ? '#d4edda' : '#f8d7da');
+        setTimeout(function() { btn.textContent = 'Save'; }, 1500);
+    }).catch(function() {
+        btn.textContent = 'Error';
+        setTimeout(function() { btn.textContent = 'Save'; }, 1500);
+    });
 }
 
 function sendTask(id) {
-    // Save first, wait for it to complete, then send
     var data = getTaskData(id);
     var saveUrl = "{{ url_for('update_task', task_id=0) }}".replace('/0', '/' + id);
-    var formData = new FormData();
-    formData.append('person', data.person);
-    formData.append('phone', data.phone);
-    formData.append('status', data.status);
-    formData.append('message', data.message);
-    formData.append('additional_message', data.addmsg);
+    var sendUrl = "{{ url_for('send_reminder', task_id=0) }}".replace('/0', '/' + id);
+    var btn = event.target;
+    btn.textContent = 'Saving...';
 
-    fetch(saveUrl, { method: 'POST', body: formData, headers: {'X-Requested-With': 'fetch'} })
-        .then(function(resp) {
-            if (resp.ok) {
-                var sendForm = document.getElementById('send-form');
-                sendForm.action = "{{ url_for('send_reminder', task_id=0) }}".replace('/0', '/' + id);
-                document.getElementById('send-addmsg').value = data.addmsg;
-                saveScroll();
-                sendForm.submit();
-            } else {
-                alert('Save failed, please try again');
-            }
-        })
-        .catch(function() { alert('Save failed, please try again'); });
+    postData(saveUrl, {
+        person: data.person, phone: data.phone, status: data.status,
+        message: data.message, additional_message: data.addmsg
+    }).then(function(resp) {
+        if (!resp.ok) throw new Error('Save failed');
+        btn.textContent = 'Sending...';
+        return postData(sendUrl, { additional_message: data.addmsg });
+    }).then(function(resp) {
+        return resp.json();
+    }).then(function(json) {
+        var ok = json.status === 'ok';
+        btn.textContent = ok ? 'Sent!' : 'Failed';
+        flashRow(id, ok ? '#d4edda' : '#f8d7da');
+        // Update the tick/cross icon
+        var addmsgCell = document.getElementById('addmsg-' + id).closest('td');
+        var existing = addmsgCell.querySelector('.send-status');
+        if (existing) existing.remove();
+        var span = document.createElement('span');
+        span.className = 'send-status ' + (ok ? 'sent' : 'failed');
+        span.innerHTML = ok ? '&#10003;' : '&#10007;';
+        span.title = json.last_sent || '';
+        addmsgCell.querySelector('div').appendChild(span);
+        // Update days-ago cell
+        var row = document.querySelector('tr[data-person] input[value="' + id + '"]').closest('tr');
+        var daysCell = row.querySelector('.days-ago-cell');
+        if (daysCell) daysCell.textContent = 'Today';
+        setTimeout(function() { btn.textContent = 'Send'; }, 2000);
+    }).catch(function() {
+        btn.textContent = 'Failed';
+        flashRow(id, '#f8d7da');
+        setTimeout(function() { btn.textContent = 'Send'; }, 2000);
+    });
 }
 
 function deleteTask(id) {
     if (!confirm('Delete this task?')) return;
-    var form = document.getElementById('delete-form');
-    form.action = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
-    saveScroll();
-    form.submit();
+    var url = "{{ url_for('delete_task', task_id=0) }}".replace('/0', '/' + id);
+    var row = document.querySelector('tr[data-person] input[value="' + id + '"]').closest('tr');
+    row.style.transition = 'opacity 0.3s';
+    row.style.opacity = '0.3';
+
+    postData(url, {}).then(function(resp) {
+        if (resp.ok) {
+            row.style.height = row.offsetHeight + 'px';
+            row.style.overflow = 'hidden';
+            row.innerHTML = '';
+            row.style.transition = 'height 0.3s, padding 0.3s';
+            row.style.height = '0';
+            row.style.padding = '0';
+            setTimeout(function() { row.remove(); }, 300);
+        } else {
+            row.style.opacity = '1';
+            alert('Delete failed');
+        }
+    }).catch(function() {
+        row.style.opacity = '1';
+        alert('Delete failed');
+    });
 }
 
 function toggleAll(master) {
@@ -185,31 +222,25 @@ function toggleAll(master) {
     });
 }
 
-function getSelectedCount() {
-    return document.querySelectorAll('input[name="task_ids"]:checked').length;
-}
-
 function bulkSend() {
-    var n = getSelectedCount();
+    var n = document.querySelectorAll('input[name="task_ids"]:checked').length;
     if (n === 0) { alert('No tasks selected'); return; }
     if (!confirm('Send messages for ' + n + ' selected task(s)?')) return;
     var form = document.getElementById('bulk-form');
     form.action = "{{ url_for('bulk_send_tasks') }}";
-    saveScroll();
     form.submit();
 }
 
 function bulkDelete() {
-    var n = getSelectedCount();
+    var n = document.querySelectorAll('input[name="task_ids"]:checked').length;
     if (n === 0) { alert('No tasks selected'); return; }
     if (!confirm('Delete ' + n + ' selected task(s)?')) return;
     var form = document.getElementById('bulk-form');
     form.action = "{{ url_for('bulk_delete_tasks') }}";
-    saveScroll();
     form.submit();
 }
 
-// Calculate days ago for each row
+// Calculate days since last sent for each row
 (function() {
     var today = new Date();
     today.setHours(0,0,0,0);
@@ -217,7 +248,6 @@ function bulkDelete() {
         var ls = row.getAttribute('data-lastsent');
         var cell = row.querySelector('.days-ago-cell');
         if (!ls || !cell) return;
-        // Extract date from "Sent 2026-04-14 12:53" or "Failed 2026-04-14 09:56"
         var match = ls.match(/(\d{4}-\d{2}-\d{2})/);
         if (match) {
             var sent = new Date(match[1] + 'T00:00:00');
@@ -225,10 +255,6 @@ function bulkDelete() {
             if (diff === 0) cell.textContent = 'Today';
             else if (diff === 1) cell.textContent = '1 day';
             else cell.textContent = diff + ' days';
-            cell.setAttribute('data-days', diff);
-        } else {
-            cell.textContent = '—';
-            cell.setAttribute('data-days', '9999');
         }
     });
 })();
@@ -236,13 +262,11 @@ function bulkDelete() {
 // Sorting
 var sortState = {};
 document.querySelectorAll('.sortable').forEach(function(th) {
-    th.style.cursor = 'pointer';
     th.addEventListener('click', function() {
         var col = parseInt(th.getAttribute('data-col'));
         var asc = sortState[col] !== 'asc';
         sortState = {};
         sortState[col] = asc ? 'asc' : 'desc';
-        // Update icons
         document.querySelectorAll('.sort-icon').forEach(function(s) { s.textContent = ''; });
         th.querySelector('.sort-icon').textContent = asc ? ' \u25B2' : ' \u25BC';
 
@@ -250,19 +274,12 @@ document.querySelectorAll('.sortable').forEach(function(th) {
         var rows = Array.from(tbody.querySelectorAll('tr[data-person]'));
         rows.sort(function(a, b) {
             var va, vb;
-            if (col === 0) { // Date
+            if (col === 0) {
                 va = a.getAttribute('data-date') || '';
                 vb = b.getAttribute('data-date') || '';
-            } else if (col === 1) { // Person
+            } else if (col === 1) {
                 va = (a.getAttribute('data-person') || '').toLowerCase();
                 vb = (b.getAttribute('data-person') || '').toLowerCase();
-            } else if (col === 5) { // Last Sent
-                va = a.getAttribute('data-lastsent') || '';
-                vb = b.getAttribute('data-lastsent') || '';
-            } else if (col === 6) { // Days Ago
-                va = parseInt(a.querySelector('.days-ago-cell').getAttribute('data-days')) || 9999;
-                vb = parseInt(b.querySelector('.days-ago-cell').getAttribute('data-days')) || 9999;
-                return asc ? va - vb : vb - va;
             }
             if (va < vb) return asc ? -1 : 1;
             if (va > vb) return asc ? 1 : -1;
@@ -296,11 +313,42 @@ function filterByPerson(btn, person) {
 }
 .tag-btn:hover { background: #dee2e6; }
 .tag-btn.active { background: #128C7E; color: #fff; }
-.tag-count { background: rgba(0,0,0,0.15); border-radius: 10px; padding: 0 0.4rem; margin-left: 0.2rem; font-size: 0.75rem; }
+.tag-btn .tag-count { background: rgba(0,0,0,0.15); border-radius: 10px; padding: 0 0.4rem; margin-left: 0.2rem; font-size: 0.75rem; }
 .tag-btn.active .tag-count { background: rgba(255,255,255,0.25); }
 .sortable { cursor: pointer; user-select: none; }
 .sortable:hover { background: rgba(255,255,255,0.15); }
 .sort-icon { font-size: 0.7rem; }
-.days-ago-cell { white-space: nowrap; font-size: 0.85rem; color: #555; font-weight: 600; }
+.person-input {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    font-family: inherit;
+}
+.person-input:focus {
+    outline: none;
+    border-color: #128C7E;
+    box-shadow: 0 0 0 2px rgba(18,140,126,0.15);
+}
+.send-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: help;
+}
+.send-status.sent {
+    background: #d4edda;
+    color: #155724;
+}
+.send-status.failed {
+    background: #f8d7da;
+    color: #721c24;
+}
 </style>
 {% endblock %}
