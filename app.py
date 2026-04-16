@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import atexit
 import secrets
 from datetime import datetime, timezone, timedelta
 from functools import wraps
@@ -11,6 +12,8 @@ from flask import (
     render_template, jsonify, flash
 )
 from authlib.integrations.flask_client import OAuth
+
+from apscheduler.schedulers.background import BackgroundScheduler
 
 import models
 
@@ -678,37 +681,18 @@ MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = "mistral-large-latest"
 
 
-@app.route("/summaries")
-@login_required
-def summaries_page():
-    groups = models.get_groups()
-    summaries = models.get_summaries()
-    return render_template("summaries.html", groups=groups, summaries=summaries)
-
-
-@app.route("/summaries/generate", methods=["POST"])
-@login_required
-def generate_summary():
-    group_jid = request.form.get("group_jid", "")
-    hours = int(request.form.get("hours", 1))
-
-    if not group_jid:
-        flash("Select a group", "error")
-        return redirect(url_for("summaries_page"))
-
+def _generate_summary(group_jid, hours=1):
+    """Generate a summary for a group (no Flask request context needed)."""
     messages = models.get_group_messages(group_jid, hours=hours)
     if not messages:
-        flash(f"No messages found in the last {hours} hour(s)", "error")
-        return redirect(url_for("summaries_page"))
+        return None
 
-    # Build conversation text
     conversation = ""
     for m in messages:
         conversation += f"[{m['timestamp']}] {m['sender_name']}: {m['body']}\n"
 
     group_name = models.get_group_name_by_jid(group_jid)
 
-    # Call Mistral Large
     prompt = f"""You are an operations analyst at a corrugation/packaging company (XpertPack).
 Summarize this WhatsApp group conversation from the "{group_name}" group.
 
@@ -752,8 +736,83 @@ If messages are in Hindi/Hinglish, still summarize in English.
     now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
     time_range = f"Last {hours}h as of {now}"
     models.add_summary(group_jid, group_name, time_range, summary_text, len(messages))
+    return summary_text
 
-    flash("Summary generated!", "success")
+
+def _auto_generate_summaries():
+    """Scheduled job: generate hourly summaries for groups matching 'Dispatch'."""
+    groups = models.get_groups()
+    for g in groups:
+        name = g["group_name"] if isinstance(g, dict) else g[1]
+        jid = g["group_jid"] if isinstance(g, dict) else g[0]
+        if "dispatch" in name.lower():
+            _generate_summary(jid, hours=1)
+
+
+# ---- Scheduler (gunicorn runs multiple workers; use a file lock to start only once) ----
+
+_scheduler_started = False
+
+def _start_scheduler():
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    try:
+        lock_path = "/tmp/whatsapp_tracker_scheduler.lock"
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(lock_fd, str(os.getpid()).encode())
+        os.close(lock_fd)
+    except FileExistsError:
+        # Check if the process that created the lock is still alive
+        try:
+            with open(lock_path) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, 0)  # Check if process exists
+            return  # Another worker already running scheduler
+        except (ProcessLookupError, ValueError, FileNotFoundError):
+            os.unlink(lock_path)
+            lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(lock_fd, str(os.getpid()).encode())
+            os.close(lock_fd)
+
+    sched = BackgroundScheduler(daemon=True)
+    sched.add_job(_auto_generate_summaries, "interval", hours=1, id="hourly_dispatch_summary")
+    sched.start()
+    _scheduler_started = True
+
+    def _cleanup_lock():
+        try:
+            os.unlink(lock_path)
+        except FileNotFoundError:
+            pass
+    atexit.register(_cleanup_lock)
+
+_start_scheduler()
+
+
+@app.route("/summaries")
+@login_required
+def summaries_page():
+    groups = models.get_groups()
+    summaries = models.get_summaries()
+    return render_template("summaries.html", groups=groups, summaries=summaries)
+
+
+@app.route("/summaries/generate", methods=["POST"])
+@login_required
+def generate_summary():
+    group_jid = request.form.get("group_jid", "")
+    hours = int(request.form.get("hours", 1))
+
+    if not group_jid:
+        flash("Select a group", "error")
+        return redirect(url_for("summaries_page"))
+
+    result = _generate_summary(group_jid, hours=hours)
+    if result is None:
+        flash(f"No messages found in the last {hours} hour(s)", "error")
+    else:
+        flash("Summary generated!", "success")
     return redirect(url_for("summaries_page"))
 
 
