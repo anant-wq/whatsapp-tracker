@@ -144,7 +144,8 @@ def webhook_post():
 
         models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group}")
 
-        if is_group and body and "#todo" in body.lower():
+        body_lower = body.lower()
+        if is_group and body and ("#todo" in body_lower or "#task" in body_lower):
             is_my_phone = (MY_PHONE in sender_phone or sender_phone in MY_PHONE)
             if is_my_phone:
                 ts = data.get("timestamp") or msgs.get("messageTimestamp")
