@@ -746,9 +746,9 @@ def _auto_generate_summaries():
         name = g["group_name"]
         jid = g["group_jid"]
         if "dispatch" in name.lower():
-            summary = _generate_summary(jid, hours=1)
+            summary = _generate_summary(jid, hours=2)
             if summary:
-                _send_whatsapp(jid, f"*Hourly Summary — {name}*\n\n{summary}")
+                _send_whatsapp(MY_PHONE + "@s.whatsapp.net", f"*Summary (last 2h) — {name}*\n\n{summary}")
 
 
 # ---- Scheduler (gunicorn runs multiple workers; use a file lock to start only once) ----
@@ -778,7 +778,7 @@ def _start_scheduler():
             os.close(lock_fd)
 
     sched = BackgroundScheduler(daemon=True)
-    sched.add_job(_auto_generate_summaries, "interval", hours=1, id="hourly_dispatch_summary")
+    sched.add_job(_auto_generate_summaries, "interval", hours=2, id="dispatch_summary_2h")
     sched.start()
     _scheduler_started = True
 
