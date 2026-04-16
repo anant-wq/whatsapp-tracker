@@ -113,6 +113,7 @@ def get_logs(limit=200):
 # ---- Tasks ----
 
 def add_task(date_str, message, phone="", person="", status=""):
+    person = person.strip()
     if phone and "@" not in phone:
         phone = _clean_phone(phone)
     conn = get_db()
@@ -175,7 +176,7 @@ def upsert_groups(groups_list):
     for g in groups_list:
         conn.execute(
             "INSERT INTO groups_ (group_name, group_jid) VALUES (?, ?)",
-            (g.get("name", "Unknown Group"), g.get("id") or g.get("jid", ""))
+            (g.get("name", "Unknown Group").strip(), g.get("id") or g.get("jid", ""))
         )
     conn.commit()
     conn.close()
@@ -222,6 +223,7 @@ def _clean_phone(phone):
 
 
 def add_contact(name, phone):
+    name = name.strip()
     phone = _clean_phone(phone)
     conn = get_db()
     conn.execute(
