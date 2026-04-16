@@ -63,6 +63,27 @@ def init_db():
             UNIQUE(checklist_id, period_key)
         );
 
+        CREATE TABLE IF NOT EXISTS group_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_jid TEXT NOT NULL,
+            group_name TEXT DEFAULT '',
+            sender_phone TEXT DEFAULT '',
+            sender_name TEXT DEFAULT '',
+            body TEXT DEFAULT '',
+            timestamp TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_jid TEXT NOT NULL,
+            group_name TEXT DEFAULT '',
+            time_range TEXT DEFAULT '',
+            summary TEXT DEFAULT '',
+            message_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS forms (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -79,6 +100,12 @@ def init_db():
             submitted_by TEXT DEFAULT ''
         );
     """)
+    # Add tag column if missing (migration for existing DBs)
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN tag TEXT DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -112,8 +139,9 @@ def get_logs(limit=200):
 
 # ---- Tasks ----
 
-def add_task(date_str, message, phone="", person="", status=""):
+def add_task(date_str, message, phone="", person="", status="", tag=""):
     person = person.strip()
+    tag = tag.strip()
     if phone and "@" not in phone:
         phone = _clean_phone(phone)
     conn = get_db()
@@ -127,12 +155,12 @@ def add_task(date_str, message, phone="", person="", status=""):
         if row:
             person = row["name"]
     conn.execute(
-        "INSERT INTO tasks (date, person, phone, message, status) VALUES (?, ?, ?, ?, ?)",
-        (date_str, person, phone, message, status)
+        "INSERT INTO tasks (date, person, phone, message, status, tag) VALUES (?, ?, ?, ?, ?, ?)",
+        (date_str, person, phone, message, status, tag)
     )
     conn.commit()
     conn.close()
-    log_event("TASK_ADDED", message[:80])
+    log_event("TASK_ADDED", f"[{tag}] {message[:70]}" if tag else message[:80])
 
 
 def get_tasks():
@@ -402,6 +430,54 @@ def get_form_responses(form_id):
         })
     conn.close()
     return result
+
+
+# ---- Group Messages ----
+
+def add_group_message(group_jid, group_name, sender_phone, sender_name, body, timestamp):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO group_messages (group_jid, group_name, sender_phone, sender_name, body, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+        (group_jid, group_name.strip(), sender_phone, sender_name.strip(), body, timestamp)
+    )
+    # Keep only last 7 days of messages
+    conn.execute("""
+        DELETE FROM group_messages WHERE timestamp < datetime('now', '-7 days')
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_group_messages(group_jid, hours=1):
+    """Get messages from a group within the last N hours."""
+    conn = get_db()
+    ist_now = _now_ist()
+    cutoff = (ist_now - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = conn.execute(
+        "SELECT * FROM group_messages WHERE group_jid = ? AND timestamp >= ? ORDER BY timestamp ASC",
+        (group_jid, cutoff)
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+# ---- Summaries ----
+
+def add_summary(group_jid, group_name, time_range, summary, message_count):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO summaries (group_jid, group_name, time_range, summary, message_count) VALUES (?, ?, ?, ?, ?)",
+        (group_jid, group_name, time_range, summary, message_count)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_summaries(limit=50):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM summaries ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return rows
 
 
 def delete_form(form_id):

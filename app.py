@@ -152,6 +152,26 @@ def webhook_post():
 
         models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group}")
 
+        # Store all group messages for summaries
+        if is_group and body:
+            ts_raw = data.get("timestamp") or msgs.get("messageTimestamp")
+            ts_str = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M:%S")
+            if isinstance(ts_raw, (int, float)):
+                ts_val = ts_raw if ts_raw > 9999999999 else ts_raw * 1000
+                ts_str = datetime.fromtimestamp(ts_val / 1000, tz=timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M:%S")
+            group_name = models.get_group_name_by_jid(chat_jid)
+            # Resolve sender name from contacts
+            sender_name = ""
+            if sender_phone:
+                contacts = models.get_contacts()
+                for c in contacts:
+                    if c["phone"] == sender_phone:
+                        sender_name = c["name"]
+                        break
+            if not sender_name:
+                sender_name = sender_phone
+            models.add_group_message(chat_jid, group_name, sender_phone, sender_name, body, ts_str)
+
         body_lower = body.lower()
         # Extract person hashtags (any #name that isn't #todo/#task)
         person_tags = [
@@ -650,6 +670,91 @@ def public_form(slug):
         models.add_form_response(form["id"], data, submitted_by=name)
         return render_template("form_thanks.html", form=form)
     return render_template("form_public.html", form=form)
+
+
+# ---- Summaries ----
+
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
+MISTRAL_MODEL = "mistral-large-latest"
+
+
+@app.route("/summaries")
+@login_required
+def summaries_page():
+    groups = models.get_groups()
+    summaries = models.get_summaries()
+    return render_template("summaries.html", groups=groups, summaries=summaries)
+
+
+@app.route("/summaries/generate", methods=["POST"])
+@login_required
+def generate_summary():
+    group_jid = request.form.get("group_jid", "")
+    hours = int(request.form.get("hours", 1))
+
+    if not group_jid:
+        flash("Select a group", "error")
+        return redirect(url_for("summaries_page"))
+
+    messages = models.get_group_messages(group_jid, hours=hours)
+    if not messages:
+        flash(f"No messages found in the last {hours} hour(s)", "error")
+        return redirect(url_for("summaries_page"))
+
+    # Build conversation text
+    conversation = ""
+    for m in messages:
+        conversation += f"[{m['timestamp']}] {m['sender_name']}: {m['body']}\n"
+
+    group_name = models.get_group_name_by_jid(group_jid)
+
+    # Call Mistral Large
+    prompt = f"""You are an operations analyst at a corrugation/packaging company (XpertPack).
+Summarize this WhatsApp group conversation from the "{group_name}" group.
+
+Extract and organize into these sections:
+1. **Key Operational Issues** - production problems, delays, quality issues
+2. **Action Items** - tasks that need to be done, who needs to do what
+3. **Pending Decisions** - things waiting for approval or decision
+4. **Dispatch/Logistics Updates** - any movement, truck, delivery updates
+5. **Escalations** - urgent matters that need immediate attention
+
+Be concise. Use bullet points. Skip sections that have no relevant content.
+If messages are in Hindi/Hinglish, still summarize in English.
+
+--- CONVERSATION ({len(messages)} messages, last {hours}h) ---
+{conversation}
+--- END ---"""
+
+    try:
+        resp = requests.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            json={
+                "model": MISTRAL_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 2000
+            },
+            headers={
+                "Authorization": f"Bearer {MISTRAL_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            timeout=60
+        )
+        if resp.status_code == 200:
+            result = resp.json()
+            summary_text = result["choices"][0]["message"]["content"]
+        else:
+            summary_text = f"Mistral API error ({resp.status_code}): {resp.text[:500]}"
+    except Exception as e:
+        summary_text = f"Error calling Mistral: {str(e)}"
+
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
+    time_range = f"Last {hours}h as of {now}"
+    models.add_summary(group_jid, group_name, time_range, summary_text, len(messages))
+
+    flash("Summary generated!", "success")
+    return redirect(url_for("summaries_page"))
 
 
 # ---- Webhook Log ----

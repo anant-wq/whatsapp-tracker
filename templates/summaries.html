@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Summaries — WA Tracker{% endblock %}
+{% block content %}
+<h2>Group Summaries</h2>
+
+<form method="POST" action="{{ url_for('generate_summary') }}" style="background:#fff;padding:1rem;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:1.5rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+    <select name="group_jid" required style="padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.9rem;min-width:200px">
+        <option value="">-- Select Group --</option>
+        {% for g in groups %}
+        <option value="{{ g.group_jid }}">{{ g.group_name }}</option>
+        {% endfor %}
+    </select>
+    <select name="hours" style="padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.9rem">
+        <option value="1">Last 1 hour</option>
+        <option value="2">Last 2 hours</option>
+        <option value="4">Last 4 hours</option>
+        <option value="8">Last 8 hours</option>
+        <option value="12">Last 12 hours</option>
+        <option value="24" selected>Last 24 hours</option>
+        <option value="48">Last 2 days</option>
+        <option value="168">Last 7 days</option>
+    </select>
+    <button type="submit" class="btn" id="gen-btn" onclick="this.textContent='Generating...';this.disabled=true;this.form.submit()">Generate Summary</button>
+</form>
+
+{% if summaries %}
+{% for s in summaries %}
+<div class="summary-card">
+    <div class="summary-header">
+        <strong>{{ s.group_name }}</strong>
+        <span class="summary-meta">{{ s.time_range }} &middot; {{ s.message_count }} messages</span>
+    </div>
+    <div class="summary-body">{{ s.summary | replace('\n', '<br>') | safe }}</div>
+</div>
+{% endfor %}
+{% else %}
+<p style="color:#999;text-align:center;padding:2rem">No summaries yet. Select a group and generate one.</p>
+{% endif %}
+
+<style>
+.summary-card {
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 1rem;
+    overflow: hidden;
+}
+.summary-header {
+    background: #128C7E;
+    color: #fff;
+    padding: 0.6rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.summary-meta {
+    font-size: 0.8rem;
+    opacity: 0.85;
+}
+.summary-body {
+    padding: 1rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #333;
+}
+.summary-body strong, .summary-body b {
+    color: #128C7E;
+}
+</style>
+{% endblock %}
