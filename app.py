@@ -40,6 +40,31 @@ app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 app.permanent_session_lifetime = timedelta(days=30)
 app.wsgi_app = PrefixMiddleware(app.wsgi_app, prefix=os.environ.get("APP_PREFIX", "/whatsapp"))
 
+
+# ---- Jinja filter: linkify + minimal markdown (bold, newlines) ----
+
+from markupsafe import Markup, escape as _html_escape
+
+_URL_RE = re.compile(r"(https?://[^\s<>\"'\)]+)")
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+@app.template_filter("linkify_md")
+def linkify_md(text):
+    if not text:
+        return ""
+    # HTML-escape first (safety)
+    s = str(_html_escape(text))
+    # Links
+    s = _URL_RE.sub(
+        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener">{m.group(1)}</a>',
+        s
+    )
+    # Bold **x**
+    s = _BOLD_RE.sub(r"<strong>\1</strong>", s)
+    # Newlines
+    s = s.replace("\n", "<br>")
+    return Markup(s)
+
 WASENDER_BASE = "https://api.wasenderapi.com"
 WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
 MY_PHONE = os.environ.get("MY_PHONE", "918447731703")

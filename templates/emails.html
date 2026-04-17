@@ -26,7 +26,7 @@
             {% if loop.first %}<span class="pill latest-pill">LATEST</span>{% endif %}
         </span>
     </div>
-    <div class="email-body">{{ s.summary | replace('\n', '<br>') | safe }}</div>
+    <div class="email-body">{{ s.summary | linkify_md }}</div>
 </div>
 {% endfor %}
 {% else %}
