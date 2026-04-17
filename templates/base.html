@@ -14,6 +14,7 @@
             <a href="{{ url_for('my_tasks_page') }}" class="{% if request.endpoint == 'my_tasks_page' %}active{% endif %}">My Tasks</a>
             <a href="{{ url_for('contacts_page') }}" class="{% if request.endpoint == 'contacts_page' %}active{% endif %}">Contacts</a>
             <a href="{{ url_for('approvals_page') }}" class="{% if request.endpoint == 'approvals_page' %}active{% endif %}">Approvals</a>
+            <a href="{{ url_for('emails_page') }}" class="{% if request.endpoint == 'emails_page' %}active{% endif %}">Emails</a>
             <a href="{{ url_for('digest_page') }}" class="{% if request.endpoint == 'digest_page' %}active{% endif %}">Digest</a>
             <a href="{{ url_for('summaries_page') }}" class="{% if request.endpoint == 'summaries_page' %}active{% endif %}">Summaries</a>
             <a href="{{ url_for('log_page') }}" class="{% if request.endpoint == 'log_page' %}active{% endif %}">Log</a>

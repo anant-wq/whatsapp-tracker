@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Emails — WA Tracker{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
+    <h2 style="margin:0">24h Email Digest</h2>
+    <form method="POST" action="{{ url_for('emails_page') }}">
+        <button type="submit" class="btn" onclick="this.textContent='Generating... (takes ~20s)';this.disabled=true;this.form.submit()" style="background:#128C7E;color:#fff;border:none;padding:0.5rem 1.1rem;border-radius:6px;cursor:pointer;font-weight:600">
+            Generate Fresh Digest
+        </button>
+    </form>
+</div>
+
+<p style="color:#777;font-size:0.85rem;margin-bottom:1rem">
+    Auto-runs every 2 hours alongside the group summaries. Triaged into ACTION / INFO / FYI.
+    Latest digest is at the top. Older ones are kept for ~5 days then pruned.
+</p>
+
+{% if summaries %}
+{% for s in summaries %}
+<div class="email-card {% if loop.first %}latest{% endif %}">
+    <div class="email-header">
+        <strong>{{ s.time_range }}</strong>
+        <span class="email-meta">
+            {% if s.action_count %}<span class="pill action-pill">{{ s.action_count }} ACTION</span>{% endif %}
+            {{ s.email_count }} emails
+            {% if loop.first %}<span class="pill latest-pill">LATEST</span>{% endif %}
+        </span>
+    </div>
+    <div class="email-body">{{ s.summary | replace('\n', '<br>') | safe }}</div>
+</div>
+{% endfor %}
+{% else %}
+<p style="color:#999;text-align:center;padding:2rem">
+    No email digests yet. Click <strong>Generate Fresh Digest</strong> above, or wait for the next 2-hourly auto-run.
+</p>
+{% endif %}
+
+<style>
+.email-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 1.25rem;
+    overflow: hidden;
+}
+.email-card.latest {
+    box-shadow: 0 2px 10px rgba(18,140,126,0.25);
+    border: 1px solid #128C7E;
+}
+.email-header {
+    background: #128C7E;
+    color: #fff;
+    padding: 0.6rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.email-header strong { font-size: 0.95rem; }
+.email-meta {
+    font-size: 0.78rem;
+    opacity: 0.95;
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+.pill {
+    background: rgba(255,255,255,0.2);
+    padding: 0.1rem 0.55rem;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.pill.action-pill { background: #ff6b6b; color: #fff; }
+.pill.latest-pill { background: #fff; color: #128C7E; }
+.email-body {
+    padding: 1rem 1.2rem;
+    font-size: 0.92rem;
+    line-height: 1.65;
+    color: #2a2a2a;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.email-body strong, .email-body b { color: #128C7E; }
+.email-body a { color: #0b7aad; text-decoration: none; word-break: break-all; }
+.email-body a:hover { text-decoration: underline; }
+</style>
+{% endblock %}

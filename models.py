@@ -84,6 +84,15 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS email_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            time_range TEXT DEFAULT '',
+            summary TEXT DEFAULT '',
+            email_count INTEGER DEFAULT 0,
+            action_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS approvals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
@@ -500,6 +509,35 @@ def delete_form(form_id):
     conn.execute("DELETE FROM form_responses WHERE form_id = ?", (form_id,))
     conn.commit()
     conn.close()
+
+
+# ---- Email Summaries ----
+
+def add_email_summary(time_range, summary, email_count=0, action_count=0):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO email_summaries
+           (time_range, summary, email_count, action_count)
+           VALUES (?, ?, ?, ?)""",
+        (time_range, summary, email_count, action_count)
+    )
+    # Keep only last 60 entries (~5 days at 2h cadence)
+    conn.execute("""
+        DELETE FROM email_summaries WHERE id NOT IN (
+            SELECT id FROM email_summaries ORDER BY id DESC LIMIT 60
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_email_summaries(limit=30):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM email_summaries ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return rows
 
 
 # ---- Approvals ----

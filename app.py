@@ -918,6 +918,157 @@ Be concise. Use bullet points. If messages are in Hindi/Hinglish, summarize in E
     return summary_text
 
 
+def _generate_email_digest_24h():
+    """Fetch last-24h Gmail and produce a triaged digest; store in email_summaries.
+    Non-destructive: doesn't touch /opt/email-digest/ state or WhatsApp notifications.
+    Returns the summary text or None on error/no emails."""
+    token_file = os.environ.get("GMAIL_TOKEN_FILE", "/opt/whatsapp-tracker/token.json")
+    if not os.path.exists(token_file):
+        models.log_event("EMAIL_DIGEST_ERROR", f"Token file missing: {token_file}")
+        return None
+    try:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+    except ImportError as e:
+        models.log_event("EMAIL_DIGEST_ERROR", f"Google libs missing: {e}")
+        return None
+
+    try:
+        scopes = ["https://www.googleapis.com/auth/gmail.readonly"]
+        creds = Credentials.from_authorized_user_file(token_file, scopes)
+        if not creds.valid and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(token_file, "w") as f:
+                f.write(creds.to_json())
+        service = build("gmail", "v1", credentials=creds)
+
+        # Last 24 hours, excluding noise senders (same list as email_checker.py)
+        skip = " ".join(f"-from:{s}" for s in [
+            "alerts@yes.bank.in", "noreply@zen-makemytrip.com",
+            "information@yes.bank.in",
+        ])
+        query = f"newer_than:1d {skip}"
+        results = service.users().messages().list(
+            userId="me", q=query, maxResults=100
+        ).execute()
+        stubs = results.get("messages", [])
+
+        if not stubs:
+            models.add_email_summary(
+                time_range=f"Last 24h as of {_now_ist_str()}",
+                summary="No emails in the last 24 hours.",
+                email_count=0, action_count=0
+            )
+            return "No emails in the last 24 hours."
+
+        emails = []
+        for stub in stubs[:60]:
+            msg = service.users().messages().get(
+                userId="me", id=stub["id"], format="metadata",
+                metadataHeaders=["From", "To", "Cc", "Subject", "Date"]
+            ).execute()
+            headers = msg.get("payload", {}).get("headers", [])
+            def hv(name):
+                for h in headers:
+                    if h["name"].lower() == name.lower():
+                        return h["value"]
+                return ""
+            emails.append({
+                "id": stub["id"],
+                "from": hv("From"), "to": hv("To"), "cc": hv("Cc"),
+                "subject": hv("Subject"), "date": hv("Date"),
+                "snippet": msg.get("snippet", "")[:200],
+            })
+
+        # Ask Mistral to triage and summarise
+        email_text = json.dumps(emails, indent=2)
+        prompt = """You are an email triage assistant for Anant (anant@xpertpack.in),
+who runs XpertPack (corrugation/packaging) and is partner in KLPL (clothing).
+
+Group related emails into threads. For each thread/entry classify:
+  Type: ACTION (anant@xpertpack.in is in To/CC AND the email asks him to do
+        something specific — approve, respond, review, confirm, decide),
+        INFO (anant is in To/CC but no specific response required; or
+        management@xpertpack.in is in To containing important business info),
+        or FYI (everything else — cc-only, automated alerts, internal forwards).
+
+For each entry produce a 1-2 line summary including: customer/external party
+name if any, who sent to whom, and what the ask/status is.
+
+Sort: all ACTION first, then INFO, then FYI. Skip bank/OTP/promotional/
+birthday/analytics emails.
+
+Format the OUTPUT in plain text (no markdown fences), like:
+
+**ACTION REQUIRED**
+• [Sender name] <1-2 line summary>
+  https://mail.google.com/mail/u/0/#inbox/<id>
+
+**INFORMATION**
+• [Sender name] <summary>
+
+**FYI**
+• [Sender name] <summary>
+
+At the end add one line: "Total: X emails (Y action, Z info, rest FYI)".
+Skipped noise emails should not appear in the output.
+"""
+        try:
+            resp = requests.post(
+                "https://api.mistral.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {MISTRAL_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": MISTRAL_MODEL,
+                    "messages": [
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": f"Triage these emails:\n{email_text}"},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 3000,
+                },
+                timeout=90,
+            )
+            if resp.status_code == 200:
+                summary_text = resp.json()["choices"][0]["message"]["content"]
+            else:
+                summary_text = f"Mistral API error ({resp.status_code}): {resp.text[:500]}"
+        except Exception as e:
+            summary_text = f"Error calling Mistral: {e}"
+
+        # Count action items (naive — count 'ACTION' lines / bullet points under ACTION section)
+        action_count = 0
+        in_action = False
+        for line in summary_text.split("\n"):
+            l = line.strip()
+            if "ACTION" in l.upper() and ("REQUIRED" in l.upper() or "ITEMS" in l.upper()):
+                in_action = True
+                continue
+            if in_action:
+                if l.startswith("**") or (l.upper().startswith(("INFO", "FYI"))):
+                    break
+                if l.startswith(("-", "•", "*")) or (l and l[0].isdigit() and "." in l[:3]):
+                    action_count += 1
+
+        models.add_email_summary(
+            time_range=f"Last 24h as of {_now_ist_str()}",
+            summary=summary_text,
+            email_count=len(emails),
+            action_count=action_count
+        )
+        return summary_text
+    except Exception as e:
+        models.log_event("EMAIL_DIGEST_ERROR", str(e))
+        return None
+
+
+def _now_ist_str():
+    return datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
+
+
 def _selected_groups():
     """Groups included in the auto-summary / 24h digest.
     Returns list of (jid, name) tuples."""
@@ -932,12 +1083,20 @@ def _selected_groups():
 
 
 def _auto_generate_summaries():
-    """Scheduled job: every 2h, summarise selected groups and DM me."""
+    """Scheduled job: every 2h, summarise selected groups and DM me,
+    and generate the 24h email digest."""
+    # Group summaries (2h window, DM to me)
     for jid, name in _selected_groups():
         summary = _generate_summary(jid, hours=2)
         if summary:
             _send_whatsapp(MY_PHONE + "@s.whatsapp.net",
                            f"*Summary (last 2h) — {name}*\n\n{summary}")
+    # 24h email digest (stored in DB for the Emails tab; no WhatsApp — the
+    # existing /opt/email-digest timer still handles incremental notifications)
+    try:
+        _generate_email_digest_24h()
+    except Exception as e:
+        models.log_event("EMAIL_DIGEST_ERROR", str(e))
 
 
 # ---- Scheduler (gunicorn runs multiple workers; use a file lock to start only once) ----
@@ -1005,6 +1164,24 @@ def generate_summary():
     else:
         flash("Summary generated!", "success")
     return redirect(url_for("summaries_page"))
+
+
+# ---- 24h Email Digest ----
+
+@app.route("/emails", methods=["GET", "POST"])
+@login_required
+def emails_page():
+    """Last-24h email digest. Latest at top. Refresh button regenerates now."""
+    if request.method == "POST":
+        result = _generate_email_digest_24h()
+        if result is None:
+            flash("Could not generate digest — check log (Gmail token or Mistral)", "error")
+        else:
+            flash("Fresh 24h email digest generated!", "success")
+        return redirect(url_for("emails_page"))
+
+    summaries = models.get_email_summaries(limit=20)
+    return render_template("emails.html", summaries=summaries)
 
 
 # ---- 24h Digest (flat view of all selected groups) ----
