@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}24h Digest — WA Tracker{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
+    <h2 style="margin:0">24h Digest <span class="count">({{ total_groups }} groups)</span></h2>
+    <form method="POST" action="{{ url_for('digest_page') }}">
+        <button type="submit" class="btn" id="refresh-btn" onclick="this.textContent='Generating... (takes ~20s)';this.disabled=true;this.form.submit()" style="background:#128C7E;color:#fff;border:none;padding:0.5rem 1.1rem;border-radius:6px;cursor:pointer;font-weight:600">
+            Generate Fresh Digest
+        </button>
+    </form>
+</div>
+
+<p style="color:#777;font-size:0.85rem;margin-bottom:1rem">
+    Flat view of the last 24 hours across Dispatch and Daily Report groups.
+    Every bullet attributes who raised / is pushing the item.
+    Click <strong>Generate Fresh Digest</strong> to refresh.
+</p>
+
+{% for item in items %}
+<div class="digest-card">
+    <div class="digest-header">
+        <strong>{{ item.group_name }}</strong>
+        {% if item.summary %}
+        <span class="digest-meta">{{ item.summary.time_range }} &middot; {{ item.summary.message_count }} messages</span>
+        {% else %}
+        <span class="digest-meta" style="opacity:0.6">No digest generated yet</span>
+        {% endif %}
+    </div>
+    <div class="digest-body">
+        {% if item.summary %}
+            {{ item.summary.summary | replace('\n', '<br>') | safe }}
+        {% else %}
+            <em style="color:#999">Click "Generate Fresh Digest" above to create a summary for this group.</em>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% if not items %}
+<p style="color:#999;text-align:center;padding:2rem">No groups selected for the digest. Groups whose name contains "Dispatch" or "Daily Report" are auto-included.</p>
+{% endif %}
+
+<style>
+.digest-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 1.25rem;
+    overflow: hidden;
+}
+.digest-header {
+    background: #128C7E;
+    color: #fff;
+    padding: 0.65rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.digest-header strong { font-size: 1rem; }
+.digest-meta {
+    font-size: 0.78rem;
+    opacity: 0.9;
+    font-weight: 400;
+}
+.digest-body {
+    padding: 1rem 1.2rem;
+    font-size: 0.92rem;
+    line-height: 1.65;
+    color: #2a2a2a;
+}
+.digest-body strong, .digest-body b {
+    color: #128C7E;
+}
+.digest-body em {
+    color: #555;
+    font-style: italic;
+}
+</style>
+{% endblock %}

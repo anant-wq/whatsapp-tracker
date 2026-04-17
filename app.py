@@ -847,24 +847,43 @@ def _generate_summary(group_jid, hours=1):
     if not messages:
         return None
 
+    # Build a name -> phone map from contacts to help attribution
+    contacts_by_phone = {c["phone"]: c["name"] for c in models.get_contacts()}
+
     conversation = ""
     for m in messages:
-        conversation += f"[{m['timestamp']}] {m['sender_name']}: {m['body']}\n"
+        # Prefer resolved contact name; include phone if name was only a fallback
+        name = m["sender_name"]
+        phone = m["sender_phone"] or ""
+        if name == phone and phone in contacts_by_phone:
+            name = contacts_by_phone[phone]
+        label = f"{name} ({phone})" if phone and phone != name else name
+        conversation += f"[{m['timestamp']}] {label}: {m['body']}\n"
 
     group_name = models.get_group_name_by_jid(group_jid)
 
     prompt = f"""You are an operations analyst at a corrugation/packaging company (XpertPack).
 Summarize this WhatsApp group conversation from the "{group_name}" group.
 
-Extract and organize into these sections:
+Organize into these sections (skip any that have no content):
 1. **Key Operational Issues** - production problems, delays, quality issues
 2. **Action Items** - tasks that need to be done, who needs to do what
 3. **Pending Decisions** - things waiting for approval or decision
 4. **Dispatch/Logistics Updates** - any movement, truck, delivery updates
 5. **Escalations** - urgent matters that need immediate attention
 
-Be concise. Use bullet points. Skip sections that have no relevant content.
-If messages are in Hindi/Hinglish, still summarize in English.
+CRITICAL RULE — ATTRIBUTION:
+For EVERY single bullet, identify WHO raised it and WHO is pushing/escalating it.
+Senders appear in the transcript as "[timestamp] Name (phone): message".
+Format each bullet exactly like this:
+   - **<topic>** — <what / status>. _Raised by <Name>_
+If multiple people are involved, list all of them:
+   _Raised by Ravi, escalated by Jha sir, awaiting reply from Tomar_
+If a phone number is given in the transcript but no name is available,
+write the phone number in place of the name so the user can look it up.
+Never omit the attribution — it is the whole point of this summary.
+
+Be concise. Use bullet points. If messages are in Hindi/Hinglish, summarize in English.
 
 --- CONVERSATION ({len(messages)} messages, last {hours}h) ---
 {conversation}
@@ -899,16 +918,26 @@ If messages are in Hindi/Hinglish, still summarize in English.
     return summary_text
 
 
+def _selected_groups():
+    """Groups included in the auto-summary / 24h digest.
+    Returns list of (jid, name) tuples."""
+    keywords = ("dispatch", "daily report")
+    selected = []
+    for g in models.get_groups():
+        name = g["group_name"] or ""
+        jid = g["group_jid"] or ""
+        if any(k in name.lower() for k in keywords):
+            selected.append((jid, name))
+    return selected
+
+
 def _auto_generate_summaries():
-    """Scheduled job: generate hourly summaries for groups matching 'Dispatch' and send to the group."""
-    groups = models.get_groups()
-    for g in groups:
-        name = g["group_name"]
-        jid = g["group_jid"]
-        if "dispatch" in name.lower() or "daily report" in name.lower():
-            summary = _generate_summary(jid, hours=2)
-            if summary:
-                _send_whatsapp(MY_PHONE + "@s.whatsapp.net", f"*Summary (last 2h) — {name}*\n\n{summary}")
+    """Scheduled job: every 2h, summarise selected groups and DM me."""
+    for jid, name in _selected_groups():
+        summary = _generate_summary(jid, hours=2)
+        if summary:
+            _send_whatsapp(MY_PHONE + "@s.whatsapp.net",
+                           f"*Summary (last 2h) — {name}*\n\n{summary}")
 
 
 # ---- Scheduler (gunicorn runs multiple workers; use a file lock to start only once) ----
@@ -976,6 +1005,46 @@ def generate_summary():
     else:
         flash("Summary generated!", "success")
     return redirect(url_for("summaries_page"))
+
+
+# ---- 24h Digest (flat view of all selected groups) ----
+
+@app.route("/summaries/digest", methods=["GET", "POST"])
+@login_required
+def digest_page():
+    """Flat 24h summary of all selected groups on one page. No dropdowns."""
+    selected = _selected_groups()
+
+    if request.method == "POST":
+        # Regenerate 24h summary for each selected group
+        generated = 0
+        skipped = 0
+        for jid, _ in selected:
+            if _generate_summary(jid, hours=24):
+                generated += 1
+            else:
+                skipped += 1
+        flash(f"Generated {generated} fresh digest(s){' (' + str(skipped) + ' groups had no messages)' if skipped else ''}",
+              "success")
+        return redirect(url_for("digest_page"))
+
+    # GET: show the latest 24h summary for each selected group
+    all_summaries = models.get_summaries(limit=500)
+    # Pick the newest 24h-range summary per group
+    latest_by_jid = {}
+    for s in all_summaries:
+        if s["group_jid"] in (jid for jid, _ in selected) and "24h" in (s["time_range"] or ""):
+            if s["group_jid"] not in latest_by_jid:
+                latest_by_jid[s["group_jid"]] = s
+    digest_items = []
+    for jid, name in selected:
+        digest_items.append({
+            "group_jid": jid,
+            "group_name": name,
+            "summary": latest_by_jid.get(jid)
+        })
+    return render_template("digest.html", items=digest_items,
+                           total_groups=len(selected))
 
 
 # ---- Webhook Log ----
