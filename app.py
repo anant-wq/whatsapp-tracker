@@ -178,7 +178,22 @@ def webhook_post():
         sender_phone = re.sub(r"[^0-9]", "", sender_phone)
         is_group = "@g.us" in chat_jid
 
-        models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group}")
+        # ---- Extract quoted-reply context (if this message is a reply) ----
+        quoted_text, quoted_sender_phone = _extract_quoted(msgs)
+        if quoted_text:
+            quoted_sender_name = ""
+            if quoted_sender_phone:
+                for c in models.get_contacts():
+                    if c["phone"] == quoted_sender_phone:
+                        quoted_sender_name = c["name"]
+                        break
+            if not quoted_sender_name:
+                quoted_sender_name = quoted_sender_phone or "Someone"
+            # Prepend quoted context so downstream handlers capture it
+            body = (f"↪ Replying to {quoted_sender_name}: \"{quoted_text}\"\n\n"
+                    f"{body}")
+
+        models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group} | quoted={'Y' if quoted_text else 'N'}")
 
         # Store all group messages for summaries
         if is_group and body:
@@ -300,6 +315,63 @@ def webhook_post():
     except Exception as e:
         models.log_event("ERROR", str(e))
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _extract_quoted(msgs):
+    """Pull quoted-reply text + original sender phone from a webhook message payload.
+    Returns (text, phone). Empty strings if the message is not a reply."""
+    try:
+        message = msgs.get("message") or {}
+        # contextInfo can live under several wrappers depending on the reply type
+        ctx = None
+        for wrapper in ("extendedTextMessage", "imageMessage", "videoMessage",
+                        "documentMessage", "audioMessage", "stickerMessage"):
+            sub = message.get(wrapper)
+            if isinstance(sub, dict) and sub.get("contextInfo"):
+                ctx = sub["contextInfo"]
+                break
+        if not ctx:
+            return ("", "")
+        quoted = ctx.get("quotedMessage") or {}
+        if not quoted:
+            return ("", "")
+
+        # Try to get text from whichever sub-type the quoted message is
+        text = (
+            quoted.get("conversation")
+            or (quoted.get("extendedTextMessage") or {}).get("text", "")
+            or (quoted.get("imageMessage") or {}).get("caption", "")
+            or (quoted.get("videoMessage") or {}).get("caption", "")
+            or (quoted.get("documentMessage") or {}).get("caption", "")
+            or ""
+        )
+        if not text:
+            # Non-text quoted message (image/video/doc with no caption)
+            if "imageMessage" in quoted:
+                text = "[image]"
+            elif "videoMessage" in quoted:
+                text = "[video]"
+            elif "documentMessage" in quoted:
+                text = "[document]"
+            elif "audioMessage" in quoted:
+                text = "[audio]"
+            elif "stickerMessage" in quoted:
+                text = "[sticker]"
+            else:
+                text = "[non-text message]"
+
+        # Phone of the ORIGINAL sender (the person being replied to)
+        phone = ctx.get("participant", "") or ""
+        phone = re.sub(r"@.*", "", phone)
+        phone = re.sub(r"[^0-9]", "", phone)
+
+        # Trim overly-long quotes so bodies don't explode
+        if len(text) > 500:
+            text = text[:497] + "..."
+        return (text.strip(), phone)
+    except Exception as e:
+        models.log_event("QUOTE_EXTRACT_ERROR", str(e))
+        return ("", "")
 
 
 def _parse_timestamp(ts):
