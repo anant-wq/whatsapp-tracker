@@ -176,12 +176,41 @@ def webhook_post():
             models.add_group_message(chat_jid, group_name, sender_phone, sender_name, body, ts_str)
 
         body_lower = body.lower()
-        # Extract person hashtags (any #name that isn't #todo/#task)
+        # Extract person hashtags (any #name that isn't #todo/#task/#approval)
         person_tags = [
             tag for tag in re.findall(r"#(\w+)", body_lower)
-            if tag not in ("todo", "task")
+            if tag not in ("todo", "task", "approval")
         ]
         has_todo = "#todo" in body_lower or "#task" in body_lower
+        has_approval = "#approval" in body_lower
+
+        # Capture #approval messages (from anyone, group or direct, not from me)
+        if has_approval and body and not from_me:
+            ts = data.get("timestamp") or msgs.get("messageTimestamp")
+            date_str = _parse_timestamp(ts)
+            if is_group:
+                group_name = models.get_group_name_by_jid(chat_jid)
+            else:
+                group_name = "Direct Message"
+            # Resolve sender name from contacts
+            sender_name = ""
+            if sender_phone:
+                for c in models.get_contacts():
+                    if c["phone"] == sender_phone:
+                        sender_name = c["name"]
+                        break
+            if not sender_name:
+                sender_name = sender_phone or "Unknown"
+            models.add_approval(
+                date_str=date_str, message=body,
+                group_jid=chat_jid if is_group else "",
+                group_name=group_name,
+                sender_phone=sender_phone, sender_name=sender_name
+            )
+            # Don't return — let the message also flow through any other handlers below
+            # (but only if there are no other tags, #approval messages typically don't need
+            #  to be tracked as tasks too). Actually, fall-through is fine — #approval is
+            #  an independent signal.
 
         # Group messages with #todo/#task
         if is_group and body and has_todo:
@@ -424,6 +453,137 @@ def bulk_send_tasks():
             failed += 1
     flash(f"Sent {sent}, failed {failed} of {len(ids)} selected", "success" if failed == 0 else "error")
     return redirect(url_for("tasks_page"))
+
+
+# ---- Approvals ----
+
+@app.route("/approvals")
+@login_required
+def approvals_page():
+    approvals = models.get_approvals()
+    people = _get_people()
+    return render_template("approvals.html", approvals=approvals, people=people)
+
+
+@app.route("/approvals/update/<int:approval_id>", methods=["POST"])
+@login_required
+def update_approval(approval_id):
+    sender_name = request.form.get("sender_name", "")
+    sender_phone = request.form.get("sender_phone", "")
+    message = request.form.get("message", "")
+    additional = request.form.get("additional_message", "")
+    updates = dict(
+        sender_name=sender_name, sender_phone=sender_phone,
+        additional_message=additional
+    )
+    if message:
+        updates["message"] = message
+    models.update_approval(approval_id, **updates)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"status": "ok"})
+    flash("Approval updated", "success")
+    return redirect(url_for("approvals_page"))
+
+
+@app.route("/approvals/send/<int:approval_id>", methods=["POST"])
+@login_required
+def send_approval(approval_id):
+    approvals = models.get_approvals()
+    approval = None
+    for a in approvals:
+        if a["id"] == approval_id:
+            approval = a
+            break
+    if not approval:
+        flash("Approval not found", "error")
+        return redirect(url_for("approvals_page"))
+
+    phone = approval["sender_phone"]
+    message = approval["message"]
+    additional = request.form.get("additional_message", "").strip()
+
+    if not phone or len(phone) < 5:
+        models.update_approval(approval_id, last_sent="ERROR: No phone")
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"status": "error", "last_sent": "ERROR: No phone"})
+        flash("No phone number", "error")
+        return redirect(url_for("approvals_page"))
+
+    full_message = (
+        f"{additional}\n\n--- Original approval request ---\n{message}"
+        if additional else message
+    )
+
+    success = _send_whatsapp(phone, full_message)
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
+    last_sent = f"Sent {now}" if success else f"Failed {now}"
+    models.update_approval(
+        approval_id, last_sent=last_sent, additional_message=additional
+    )
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"status": "ok" if success else "error", "last_sent": last_sent})
+    flash("Reply sent!" if success else "Send failed", "success" if success else "error")
+    return redirect(url_for("approvals_page"))
+
+
+@app.route("/approvals/delete/<int:approval_id>", methods=["POST"])
+@login_required
+def delete_approval(approval_id):
+    models.delete_approval(approval_id)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"status": "ok"})
+    flash("Approval deleted", "success")
+    return redirect(url_for("approvals_page"))
+
+
+@app.route("/approvals/bulk-delete", methods=["POST"])
+@login_required
+def bulk_delete_approvals():
+    ids = request.form.getlist("approval_ids")
+    count = 0
+    for aid in ids:
+        models.delete_approval(int(aid))
+        count += 1
+    flash(f"Deleted {count} approval(s)", "success")
+    return redirect(url_for("approvals_page"))
+
+
+@app.route("/approvals/bulk-send", methods=["POST"])
+@login_required
+def bulk_send_approvals():
+    ids = request.form.getlist("approval_ids")
+    approvals = models.get_approvals()
+    amap = {a["id"]: a for a in approvals}
+    sent = 0
+    failed = 0
+    for aid in ids:
+        a = amap.get(int(aid))
+        if not a:
+            continue
+        phone = a["sender_phone"]
+        message = a["message"]
+        additional = a["additional_message"] or ""
+        if not phone or len(phone) < 5:
+            models.update_approval(int(aid), last_sent="ERROR: No phone")
+            failed += 1
+            continue
+        full_message = (
+            f"{additional}\n\n--- Original approval request ---\n{message}"
+            if additional else message
+        )
+        success = _send_whatsapp(phone, full_message)
+        now = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
+        models.update_approval(
+            int(aid),
+            last_sent=f"Sent {now}" if success else f"Failed {now}"
+        )
+        if success:
+            sent += 1
+        else:
+            failed += 1
+    flash(f"Sent {sent}, failed {failed} of {len(ids)} selected",
+          "success" if failed == 0 else "error")
+    return redirect(url_for("approvals_page"))
 
 
 # ---- Contacts (merged with Groups) ----

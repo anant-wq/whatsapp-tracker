@@ -84,6 +84,20 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS approvals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            group_jid TEXT DEFAULT '',
+            group_name TEXT DEFAULT '',
+            sender_phone TEXT DEFAULT '',
+            sender_name TEXT DEFAULT '',
+            message TEXT DEFAULT '',
+            additional_message TEXT DEFAULT '',
+            status TEXT DEFAULT '',
+            last_sent TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS forms (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -484,5 +498,65 @@ def delete_form(form_id):
     conn = get_db()
     conn.execute("DELETE FROM forms WHERE id = ?", (form_id,))
     conn.execute("DELETE FROM form_responses WHERE form_id = ?", (form_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---- Approvals ----
+
+def add_approval(date_str, message, group_jid="", group_name="",
+                 sender_phone="", sender_name=""):
+    sender_phone = _clean_phone(sender_phone) if sender_phone else ""
+    # Resolve sender name from contacts if not provided
+    if sender_phone and not sender_name:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT name FROM contacts WHERE phone = ?", (sender_phone,)
+        ).fetchone()
+        if row:
+            sender_name = row["name"]
+        conn.close()
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO approvals
+           (date, group_jid, group_name, sender_phone, sender_name, message)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (date_str, group_jid, group_name.strip(), sender_phone,
+         sender_name.strip(), message)
+    )
+    conn.commit()
+    conn.close()
+    log_event("APPROVAL_ADDED", f"{sender_name} @ {group_name}: {message[:70]}")
+
+
+def get_approvals():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM approvals ORDER BY id DESC").fetchall()
+    conn.close()
+    return rows
+
+
+def update_approval(approval_id, **kwargs):
+    conn = get_db()
+    allowed = {"sender_name", "sender_phone", "group_name", "group_jid",
+               "message", "additional_message", "status", "last_sent"}
+    sets = []
+    vals = []
+    for k, v in kwargs.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            vals.append(v)
+    if sets:
+        vals.append(approval_id)
+        conn.execute(
+            f"UPDATE approvals SET {', '.join(sets)} WHERE id = ?", vals
+        )
+        conn.commit()
+    conn.close()
+
+
+def delete_approval(approval_id):
+    conn = get_db()
+    conn.execute("DELETE FROM approvals WHERE id = ?", (approval_id,))
     conn.commit()
     conn.close()

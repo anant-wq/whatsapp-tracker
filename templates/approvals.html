@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}Approvals — WA Tracker{% endblock %}
+{% block content %}
+<h2>Approvals <span class="count">({{ approvals|length }} pending)</span> <button onclick="location.reload()" style="background:none;border:1px solid #ccc;border-radius:6px;padding:0.25rem 0.7rem;cursor:pointer;font-size:0.85rem;color:#128C7E" title="Refresh">&#8635;</button></h2>
+
+<!-- Group filter tags -->
+<div id="group-tags" style="margin-bottom:0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
+    <span style="font-size:0.8rem;color:#888;margin-right:0.3rem">Filter:</span>
+    <button type="button" class="tag-btn active" onclick="filterByGroup(this, '')" data-group="">All</button>
+    {% set groups = [] %}
+    {% for a in approvals %}
+        {% if a.group_name and a.group_name not in groups %}
+            {% if groups.append(a.group_name) %}{% endif %}
+        {% endif %}
+    {% endfor %}
+    {% for gname in groups|sort %}
+    <button type="button" class="tag-btn" onclick="filterByGroup(this, '{{ gname }}')" data-group="{{ gname }}">{{ gname }} <span class="tag-count">{{ approvals|selectattr('group_name', 'equalto', gname)|list|length }}</span></button>
+    {% endfor %}
+</div>
+
+<form method="POST" id="bulk-form">
+<div class="toolbar">
+    <button type="button" class="btn-send" onclick="bulkSend()" style="padding:0.4rem 1rem;border-radius:6px">Send Selected</button>
+    <button type="button" class="btn-del" onclick="bulkDelete()" style="padding:0.4rem 1rem;border-radius:6px">Delete Selected</button>
+    <label style="font-size:0.85rem;color:#666;cursor:pointer"><input type="checkbox" id="select-all" onchange="toggleAll(this)"> Select all</label>
+</div>
+<div class="table-wrap">
+<table id="approvals-table">
+    <thead>
+        <tr>
+            <th class="check-cell"></th>
+            <th class="sortable" data-col="0" style="width:90px">Date</th>
+            <th class="sortable" data-col="1" style="width:200px">From / Group</th>
+            <th>Message</th>
+            <th style="width:250px">My Reply / Note</th>
+            <th style="width:60px">Sent</th>
+            <th style="width:130px">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for a in approvals %}
+        <tr data-group="{{ a.group_name }}" data-date="{{ a.date }}" data-lastsent="{{ a.last_sent }}" data-id="{{ a.id }}">
+            <td class="check-cell"><input type="checkbox" name="approval_ids" value="{{ a.id }}" form="bulk-form"></td>
+            <td class="date-cell">{{ a.date }}</td>
+            <td>
+                <input type="text" id="sender-{{ a.id }}" list="people-list" value="{{ a.sender_name }}" oninput="senderChanged({{ a.id }})" onchange="senderChanged({{ a.id }})" placeholder="Sender name..." class="person-input">
+                <span class="mono" style="font-size:0.75rem;color:#128C7E;display:block;margin-top:2px;font-weight:500">{{ a.group_name }}</span>
+                <span class="mono" style="font-size:0.7rem;color:#aaa;display:block" id="phone-display-{{ a.id }}">{{ a.sender_phone }}</span>
+            </td>
+            <td class="msg-cell">
+                <textarea id="msg-{{ a.id }}" rows="3" class="notes-input" style="min-height:70px">{{ a.message }}</textarea>
+            </td>
+            <td>
+                <div style="display:flex;align-items:flex-start;gap:6px">
+                    <textarea id="addmsg-{{ a.id }}" placeholder="Add note..." rows="3" class="notes-input" style="min-height:70px;flex:1">{{ a.additional_message }}</textarea>
+                    {% if a.last_sent and 'Sent' in a.last_sent %}
+                    <span class="send-status sent" title="{{ a.last_sent }}">&#10003;</span>
+                    {% elif a.last_sent and 'Failed' in a.last_sent %}
+                    <span class="send-status failed" title="{{ a.last_sent }}">&#10007;</span>
+                    {% endif %}
+                </div>
+            </td>
+            <td class="days-ago-cell"></td>
+            <td>
+                <div class="btn-actions" style="flex-wrap:wrap">
+                    <button class="btn-sm" onclick="saveApproval({{ a.id }})" type="button">Save</button>
+                    <button class="btn-send" onclick="sendApproval({{ a.id }})" type="button">Send</button>
+                    <button class="btn-del" onclick="deleteApproval({{ a.id }})" type="button">Del</button>
+                </div>
+            </td>
+        </tr>
+    {% endfor %}
+    {% if not approvals %}
+        <tr><td colspan="7" class="empty">No approval requests yet. Tell your team to tag messages with <code>#approval</code>.</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+</form>
+
+<!-- Shared datalist for person autocomplete -->
+<datalist id="people-list">
+    {% for p in people %}
+    <option value="{{ p.name }}">{{ p.phone }}</option>
+    {% endfor %}
+</datalist>
+
+<script>
+var phoneMap = {
+    {% for p in people %}
+    {{ p.name|tojson }}: {{ p.phone|tojson }},
+    {% endfor %}
+};
+
+function getApprovalData(id) {
+    var input = document.getElementById('sender-' + id);
+    var name = input.value.trim();
+    var existingPhone = document.getElementById('phone-display-' + id).textContent.trim();
+    return {
+        sender_name: name,
+        sender_phone: phoneMap[name] || existingPhone,
+        message: document.getElementById('msg-' + id).value,
+        addmsg: document.getElementById('addmsg-' + id).value
+    };
+}
+
+function senderChanged(id) {
+    var data = getApprovalData(id);
+    if (phoneMap[data.sender_name]) {
+        document.getElementById('phone-display-' + id).textContent = phoneMap[data.sender_name];
+    }
+}
+
+function flashRow(id, color) {
+    var row = document.querySelector('tr[data-id="' + id + '"]');
+    if (row) {
+        row.style.transition = 'background 0.3s';
+        row.style.background = color;
+        setTimeout(function() { row.style.background = ''; }, 1500);
+    }
+}
+
+function postData(url, data) {
+    var formData = new FormData();
+    for (var k in data) formData.append(k, data[k]);
+    return fetch(url, { method: 'POST', body: formData, headers: {'X-Requested-With': 'fetch'} });
+}
+
+function saveApproval(id) {
+    var data = getApprovalData(id);
+    var url = "{{ url_for('update_approval', approval_id=0) }}".replace('/0', '/' + id);
+    var btn = event.target;
+    btn.textContent = '...';
+    postData(url, {
+        sender_name: data.sender_name, sender_phone: data.sender_phone,
+        message: data.message, additional_message: data.addmsg
+    }).then(function(resp) {
+        btn.textContent = resp.ok ? 'Saved!' : 'Error';
+        flashRow(id, resp.ok ? '#d4edda' : '#f8d7da');
+        setTimeout(function() { btn.textContent = 'Save'; }, 1500);
+    }).catch(function() {
+        btn.textContent = 'Error';
+        setTimeout(function() { btn.textContent = 'Save'; }, 1500);
+    });
+}
+
+function sendApproval(id) {
+    var data = getApprovalData(id);
+    var saveUrl = "{{ url_for('update_approval', approval_id=0) }}".replace('/0', '/' + id);
+    var sendUrl = "{{ url_for('send_approval', approval_id=0) }}".replace('/0', '/' + id);
+    var btn = event.target;
+    btn.textContent = 'Saving...';
+
+    postData(saveUrl, {
+        sender_name: data.sender_name, sender_phone: data.sender_phone,
+        message: data.message, additional_message: data.addmsg
+    }).then(function(resp) {
+        if (!resp.ok) throw new Error('Save failed');
+        btn.textContent = 'Sending...';
+        return postData(sendUrl, { additional_message: data.addmsg });
+    }).then(function(resp) {
+        return resp.json();
+    }).then(function(json) {
+        var ok = json.status === 'ok';
+        btn.textContent = ok ? 'Sent!' : 'Failed';
+        flashRow(id, ok ? '#d4edda' : '#f8d7da');
+        var addmsgCell = document.getElementById('addmsg-' + id).closest('td');
+        var existing = addmsgCell.querySelector('.send-status');
+        if (existing) existing.remove();
+        var span = document.createElement('span');
+        span.className = 'send-status ' + (ok ? 'sent' : 'failed');
+        span.innerHTML = ok ? '&#10003;' : '&#10007;';
+        span.title = json.last_sent || '';
+        addmsgCell.querySelector('div').appendChild(span);
+        var row = document.querySelector('tr[data-id="' + id + '"]');
+        var daysCell = row.querySelector('.days-ago-cell');
+        if (daysCell) daysCell.textContent = 'Today';
+        setTimeout(function() { btn.textContent = 'Send'; }, 2000);
+    }).catch(function() {
+        btn.textContent = 'Failed';
+        flashRow(id, '#f8d7da');
+        setTimeout(function() { btn.textContent = 'Send'; }, 2000);
+    });
+}
+
+function deleteApproval(id) {
+    if (!confirm('Delete this approval?')) return;
+    var url = "{{ url_for('delete_approval', approval_id=0) }}".replace('/0', '/' + id);
+    var row = document.querySelector('tr[data-id="' + id + '"]');
+    row.style.transition = 'opacity 0.3s';
+    row.style.opacity = '0.3';
+
+    postData(url, {}).then(function(resp) {
+        if (resp.ok) {
+            row.style.height = row.offsetHeight + 'px';
+            row.style.overflow = 'hidden';
+            row.innerHTML = '';
+            row.style.transition = 'height 0.3s, padding 0.3s';
+            row.style.height = '0';
+            row.style.padding = '0';
+            setTimeout(function() { row.remove(); }, 300);
+        } else {
+            row.style.opacity = '1';
+            alert('Delete failed');
+        }
+    }).catch(function() {
+        row.style.opacity = '1';
+        alert('Delete failed');
+    });
+}
+
+function toggleAll(master) {
+    document.querySelectorAll('input[name="approval_ids"]').forEach(function(cb) {
+        cb.checked = master.checked;
+    });
+}
+
+function bulkSend() {
+    var n = document.querySelectorAll('input[name="approval_ids"]:checked').length;
+    if (n === 0) { alert('No approvals selected'); return; }
+    if (!confirm('Send replies for ' + n + ' selected approval(s)?')) return;
+    var form = document.getElementById('bulk-form');
+    form.action = "{{ url_for('bulk_send_approvals') }}";
+    form.submit();
+}
+
+function bulkDelete() {
+    var n = document.querySelectorAll('input[name="approval_ids"]:checked').length;
+    if (n === 0) { alert('No approvals selected'); return; }
+    if (!confirm('Delete ' + n + ' selected approval(s)?')) return;
+    var form = document.getElementById('bulk-form');
+    form.action = "{{ url_for('bulk_delete_approvals') }}";
+    form.submit();
+}
+
+// Calculate days since last sent for each row
+(function() {
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    document.querySelectorAll('#approvals-table tbody tr[data-lastsent]').forEach(function(row) {
+        var ls = row.getAttribute('data-lastsent');
+        var cell = row.querySelector('.days-ago-cell');
+        if (!ls || !cell) return;
+        var match = ls.match(/(\d{4}-\d{2}-\d{2})/);
+        if (match) {
+            var sent = new Date(match[1] + 'T00:00:00');
+            var diff = Math.floor((today - sent) / 86400000);
+            if (diff === 0) cell.textContent = 'Today';
+            else if (diff === 1) cell.textContent = '1 day';
+            else cell.textContent = diff + ' days';
+        }
+    });
+})();
+
+// Sorting
+var sortState = {};
+document.querySelectorAll('.sortable').forEach(function(th) {
+    th.addEventListener('click', function() {
+        var col = parseInt(th.getAttribute('data-col'));
+        var asc = sortState[col] !== 'asc';
+        sortState = {};
+        sortState[col] = asc ? 'asc' : 'desc';
+        document.querySelectorAll('.sort-icon').forEach(function(s) { s.textContent = ''; });
+        var icon = th.querySelector('.sort-icon');
+        if (icon) icon.textContent = asc ? ' \u25B2' : ' \u25BC';
+
+        var tbody = document.querySelector('#approvals-table tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+        rows.sort(function(a, b) {
+            var va, vb;
+            if (col === 0) {
+                va = a.getAttribute('data-date') || '';
+                vb = b.getAttribute('data-date') || '';
+            } else if (col === 1) {
+                va = (a.getAttribute('data-group') || '').toLowerCase();
+                vb = (b.getAttribute('data-group') || '').toLowerCase();
+            }
+            if (va < vb) return asc ? -1 : 1;
+            if (va > vb) return asc ? 1 : -1;
+            return 0;
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+    });
+});
+
+function filterByGroup(btn, gname) {
+    document.querySelectorAll('.tag-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var rows = document.querySelectorAll('table tbody tr[data-group]');
+    rows.forEach(function(row) {
+        if (!gname) {
+            row.style.display = '';
+        } else {
+            row.style.display = row.getAttribute('data-group') === gname ? '' : 'none';
+        }
+    });
+}
+</script>
+
+<style>
+.tag-btn {
+    background: #e9ecef; color: #555; border: none; padding: 0.3rem 0.7rem;
+    border-radius: 20px; cursor: pointer; font-size: 0.8rem; font-weight: 500;
+    transition: all 0.15s;
+}
+.tag-btn:hover { background: #dee2e6; }
+.tag-btn.active { background: #128C7E; color: #fff; }
+.tag-btn .tag-count { background: rgba(0,0,0,0.15); border-radius: 10px; padding: 0 0.4rem; margin-left: 0.2rem; font-size: 0.75rem; }
+.tag-btn.active .tag-count { background: rgba(255,255,255,0.25); }
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { background: rgba(255,255,255,0.15); }
+.sort-icon { font-size: 0.7rem; }
+.person-input {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    font-family: inherit;
+}
+.person-input:focus {
+    outline: none;
+    border-color: #128C7E;
+    box-shadow: 0 0 0 2px rgba(18,140,126,0.15);
+}
+.send-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: help;
+}
+.send-status.sent { background: #d4edda; color: #155724; }
+.send-status.failed { background: #f8d7da; color: #721c24; }
+</style>
+{% endblock %}
