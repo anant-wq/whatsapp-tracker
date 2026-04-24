@@ -195,6 +195,34 @@ def webhook_post():
 
         models.log_event("PARSED", f"fromMe={from_me} | body={body[:80]} | sender={sender_phone} | isGroup={is_group} | quoted={'Y' if quoted_text else 'N'}")
 
+        # ── Kharakapas PMS bridge ──────────────────────────────────────
+        # Forward '#kk-*' commands to the Kharakapas tools server so it can
+        # reply with the matching digest subset. Server-to-server call,
+        # token-authenticated. Silent if not configured.
+        try:
+            _kk_body = (body or "").strip().lower()
+            if (_kk_body.startswith("#kk-") or _kk_body.startswith("#kk_")
+                    or _kk_body.startswith("#kk ")) and not from_me:
+                _kk_url    = os.environ.get("KK_BRIDGE_URL", "").strip()
+                _kk_secret = os.environ.get("KK_BRIDGE_SECRET", "").strip()
+                if _kk_url and _kk_secret and chat_jid:
+                    import requests as _rq
+                    try:
+                        _rq.post(
+                            _kk_url,
+                            json={"command": body, "chat_jid": chat_jid,
+                                  "sender": sender_phone},
+                            headers={"X-Bridge-Token": _kk_secret,
+                                     "Content-Type":   "application/json"},
+                            timeout=45,
+                        )
+                        models.log_event("KK_BRIDGE", f"forwarded {body[:40]} → {chat_jid}")
+                    except Exception as _e:
+                        models.log_event("KK_BRIDGE_ERR", f"{type(_e).__name__}: {_e}")
+        except Exception as _e:
+            models.log_event("KK_BRIDGE_EXC", f"{type(_e).__name__}: {_e}")
+        # ── end Kharakapas bridge ──────────────────────────────────────
+
         # Store all group messages for summaries
         if is_group and body:
             ts_raw = data.get("timestamp") or msgs.get("messageTimestamp")
